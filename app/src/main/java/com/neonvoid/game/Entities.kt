@@ -19,11 +19,16 @@ object EK {
     const val MINELAYER = 8
     const val SWARMER = 9
     const val MINE = 10
-    const val COUNT = 11
+    const val SHIELDER = 11
+    const val WISP = 12
+    const val CARRIER = 13
+    const val PYLON = 14
+    const val COUNT = 15
 
     val displayNames = arrayOf(
         "DRIFTER", "WEAVER", "CHARGER", "TURRET", "BOSS",
-        "LANCER", "ORBITER", "SPLITTER", "MINELAYER", "SWARMER", "MINE"
+        "LANCER", "ORBITER", "SPLITTER", "MINELAYER", "SWARMER", "MINE",
+        "SHIELDER", "WISP", "CARRIER", "PYLON"
     )
 }
 
@@ -52,6 +57,8 @@ class Bullet {
     var turn = 0f            // radians per second
     var target = -1
     var splash = 0f          // blast radius on impact
+    var fuse = 0f            // seconds until it bursts on its own
+    var shrapnel = 0         // fragments produced when it bursts
 }
 
 fun Enemy.seedPhase(): Float = (x + y) * 0.05f
@@ -87,6 +94,7 @@ class Enemy {
     var aux = 0f             // per-kind scratch (charge timers, orbit centres)
     var aux2 = 0f
     var telegraph = 0f       // 0..1 wind-up indicator
+    var link = -1            // partner index, for paired enemies
 }
 
 class PowerUp {
@@ -248,6 +256,42 @@ object Shapes {
         }
         close()
     }
+    val shielder: Path = Path().apply {
+        moveTo(0f, 0.55f)
+        lineTo(0.9f, 0.25f)
+        lineTo(0.75f, -0.5f)
+        lineTo(0.3f, -0.85f)
+        lineTo(-0.3f, -0.85f)
+        lineTo(-0.75f, -0.5f)
+        lineTo(-0.9f, 0.25f)
+        close()
+    }
+    val wisp: Path = Path().apply {
+        moveTo(0f, 1f)
+        lineTo(0.45f, 0.15f)
+        lineTo(0.28f, -0.75f)
+        lineTo(-0.28f, -0.75f)
+        lineTo(-0.45f, 0.15f)
+        close()
+    }
+    val carrier: Path = Path().apply {
+        moveTo(0f, 0.95f)
+        lineTo(0.7f, 0.6f)
+        lineTo(1.2f, -0.1f)
+        lineTo(0.8f, -0.75f)
+        lineTo(-0.8f, -0.75f)
+        lineTo(-1.2f, -0.1f)
+        lineTo(-0.7f, 0.6f)
+        close()
+    }
+    val pylon: Path = Path().apply {
+        moveTo(0f, 1.1f)
+        lineTo(0.5f, 0.2f)
+        lineTo(0.34f, -0.9f)
+        lineTo(-0.34f, -0.9f)
+        lineTo(-0.5f, 0.2f)
+        close()
+    }
     val diamond: Path = Path().apply {
         moveTo(0f, -1f)
         lineTo(1f, 0f)
@@ -317,6 +361,10 @@ object Draw {
             EK.MINELAYER -> Shapes.minelayer
             EK.SWARMER -> Shapes.swarmer
             EK.MINE -> Shapes.mine
+            EK.SHIELDER -> Shapes.shielder
+            EK.WISP -> Shapes.wisp
+            EK.CARRIER -> Shapes.carrier
+            EK.PYLON -> Shapes.pylon
             else -> Shapes.boss
         }
         Neon.fillPath(c, shape, fade(col, 0.24f))
@@ -343,6 +391,31 @@ object Draw {
             val pulse = 0.45f + 0.55f * sin(timeNow * 7f + e.seedPhase())
             Neon.ring(c, e.x, e.y, s * (1.4f + 0.25f * pulse), fade(Palette.RED, 0.4f * pulse), 1.4f, 0.8f)
         }
+    }
+
+    /** The plate a shielder holds towards you - shots from below just bounce. */
+    fun shielderPlate(c: Canvas, e: Enemy) {
+        if (e.kind != EK.SHIELDER) return
+        val r = e.r * 1.55f
+        val steps = 12
+        val half = EnemyAI.SHIELD_ARC
+        var px = e.x + cos(e.aux - half) * r
+        var py = e.y + sin(e.aux - half) * r
+        for (i in 1..steps) {
+            val a = e.aux - half + 2f * half * (i / steps.toFloat())
+            val nx = e.x + cos(a) * r
+            val ny = e.y + sin(a) * r
+            Neon.line(c, px, py, nx, ny, fade(Palette.SKY, 0.9f), 3.2f, 1f)
+            px = nx; py = ny
+        }
+    }
+
+    /** The lethal line strung between a live pylon pair. */
+    fun pylonTether(c: Canvas, a: Enemy, b: Enemy, live: Boolean, warm: Float) {
+        val col = if (live) Palette.RED else Palette.AMBER
+        val alpha = if (live) 1f else 0.25f + 0.5f * warm
+        Neon.line(c, a.x, a.y, b.x, b.y, fade(col, alpha), if (live) 3.4f else 1.4f, 1.2f)
+        if (live) Neon.line(c, a.x, a.y, b.x, b.y, fade(Palette.WHITE, 0.7f), 1.2f, 0.6f)
     }
 
     /** The wind-up beam a lancer shows before it fires. */

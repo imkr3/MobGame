@@ -53,7 +53,7 @@ object Sectors {
             sunStops = intArrayOf(0xCCFFF0A0.toInt(), 0xC6FF8A3D.toInt(), 0xBFFF3B4F.toInt(), 0xB3A81E5A.toInt()),
             grid = 0xFFFF6B5C.toInt(),
             nebula = 0xFFFF4A5C.toInt(),
-            roster = intArrayOf(EK.CHARGER, EK.SWARMER, EK.LANCER, EK.DRIFTER),
+            roster = intArrayOf(EK.DRIFTER, EK.CHARGER, EK.SWARMER, EK.LANCER, EK.WISP),
             boss = BT.WARDEN,
             bossName = "WARDEN",
             musicKey = 1
@@ -66,7 +66,7 @@ object Sectors {
             sunStops = intArrayOf(0xCCB0E8FF.toInt(), 0xC67AA2FF.toInt(), 0xBF6B4FFF.toInt(), 0xB33B1EA8.toInt()),
             grid = 0xFF7A5CFF.toInt(),
             nebula = 0xFF5C7AFF.toInt(),
-            roster = intArrayOf(EK.TURRET, EK.ORBITER, EK.WEAVER, EK.MINELAYER),
+            roster = intArrayOf(EK.WEAVER, EK.TURRET, EK.ORBITER, EK.MINELAYER, EK.PYLON),
             boss = BT.HIVE,
             bossName = "HIVE",
             musicKey = 2
@@ -79,7 +79,7 @@ object Sectors {
             sunStops = intArrayOf(0xCCFFFFC0.toInt(), 0xC6FFD93D.toInt(), 0xBF9BFF57.toInt(), 0xB33DBF7A.toInt()),
             grid = Palette.LIME,
             nebula = 0xFFBFA030.toInt(),
-            roster = intArrayOf(EK.SPLITTER, EK.TURRET, EK.LANCER, EK.SWARMER),
+            roster = intArrayOf(EK.SPLITTER, EK.SHIELDER, EK.TURRET, EK.LANCER, EK.CARRIER, EK.SWARMER),
             boss = BT.FORGE,
             bossName = "FORGE",
             musicKey = 3
@@ -92,7 +92,7 @@ object Sectors {
             sunStops = intArrayOf(0xCCFFFFFF.toInt(), 0xC6D0D0FF.toInt(), 0xBF9B5CFF.toInt(), 0xB3402080.toInt()),
             grid = 0xFFB0B0FF.toInt(),
             nebula = 0xFF8080FF.toInt(),
-            roster = intArrayOf(EK.ORBITER, EK.SPLITTER, EK.LANCER, EK.MINELAYER, EK.CHARGER, EK.TURRET),
+            roster = intArrayOf(EK.WISP, EK.ORBITER, EK.SPLITTER, EK.LANCER, EK.PYLON, EK.SHIELDER, EK.CARRIER, EK.MINELAYER, EK.CHARGER),
             boss = BT.NULLIFIER,
             bossName = "NULLIFIER",
             musicKey = 4

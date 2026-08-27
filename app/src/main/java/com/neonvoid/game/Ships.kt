@@ -97,7 +97,29 @@ object ShipDex {
             damageBonus = 1, scoreMul = 1.25f, signature = Aug.PULSE, signatureLevel = 2),
         Ship(10, "ARCLIGHT", Rarity.LEGENDARY, 0, Palette.SKY,
             "Storm coil primed before you even launch.",
-            damageBonus = 2, fireMul = 1.05f, signature = Aug.ARC, signatureLevel = 2)
+            damageBonus = 2, fireMul = 1.05f, signature = Aug.ARC, signatureLevel = 2),
+        Ship(11, "SPUR", Rarity.COMMON, 5, Palette.SKY,
+            "Racing frame. Quick everywhere except the trigger.",
+            handlingMul = 1.22f, hitR = 5.0f, fireMul = 1.12f),
+        Ship(12, "EMBER", Rarity.RARE, 6, Palette.RED,
+            "Mortar rig. Lobs its answer over the front line.",
+            damageBonus = 1, fireMul = 1.06f, signature = Aug.FLAK, signatureLevel = 1),
+        Ship(13, "GLASS", Rarity.RARE, 5, Palette.WHITE,
+            "One hull segment. Enormous guns. Good luck.",
+            lives = 1, damageBonus = 2, fireMul = 0.9f, hitR = 4.6f),
+        Ship(14, "VESPER", Rarity.EPIC, 7, Palette.ROSE,
+            "Cutting beam on a short leash. Fly close.",
+            grazeMul = 1.3f, signature = Aug.TETHER, signatureLevel = 1),
+        Ship(15, "TITAN", Rarity.EPIC, 3, Palette.AMBER,
+            "Five segments of hull and a very slow trigger.",
+            lives = 5, startShield = 1, handlingMul = 0.8f, fireMul = 1.22f, damageBonus = 2),
+        Ship(16, "ORACLE", Rarity.LEGENDARY, 7, Palette.CYAN,
+            "Launches with its own escort already flying.",
+            scoreMul = 1.2f, magnetMul = 1.5f, signature = Aug.WING, signatureLevel = 2),
+        Ship(17, "PHANTOM", Rarity.LEGENDARY, 5, Palette.MAGENTA,
+            "Barely there. Grazes charge it almost instantly.",
+            lives = 2, hitR = 3.4f, grazeMul = 2.0f, handlingMul = 1.2f,
+            signature = Aug.ARC, signatureLevel = 1)
     )
 
     const val PULL_COST = 100
@@ -174,6 +196,48 @@ object Hulls {
             lineTo(-0.6f, 0.66f)
             lineTo(-0.85f, 0.1f)
             lineTo(-0.28f, -0.2f)
+            close()
+        },
+        // 5 NEEDLE - almost nothing to hit
+        Path().apply {
+            moveTo(0f, -1.35f)
+            lineTo(0.2f, 0.1f)
+            lineTo(0.44f, 0.7f)
+            lineTo(0.1f, 0.5f)
+            lineTo(0f, 0.75f)
+            lineTo(-0.1f, 0.5f)
+            lineTo(-0.44f, 0.7f)
+            lineTo(-0.2f, 0.1f)
+            close()
+        },
+        // 6 CROSS - cruciform bomber
+        Path().apply {
+            moveTo(0f, -1.05f)
+            lineTo(0.24f, -0.35f)
+            lineTo(1.0f, -0.2f)
+            lineTo(1.0f, 0.16f)
+            lineTo(0.24f, 0.2f)
+            lineTo(0.4f, 0.75f)
+            lineTo(0f, 0.55f)
+            lineTo(-0.4f, 0.75f)
+            lineTo(-0.24f, 0.2f)
+            lineTo(-1.0f, 0.16f)
+            lineTo(-1.0f, -0.2f)
+            lineTo(-0.24f, -0.35f)
+            close()
+        },
+        // 7 ORB - rounded body with swept fins
+        Path().apply {
+            moveTo(0f, -1.0f)
+            lineTo(0.42f, -0.62f)
+            lineTo(0.56f, 0.05f)
+            lineTo(0.86f, 0.62f)
+            lineTo(0.3f, 0.45f)
+            lineTo(0f, 0.7f)
+            lineTo(-0.3f, 0.45f)
+            lineTo(-0.86f, 0.62f)
+            lineTo(-0.56f, 0.05f)
+            lineTo(-0.42f, -0.62f)
             close()
         }
     )

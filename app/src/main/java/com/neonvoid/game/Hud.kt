@@ -97,15 +97,15 @@ class Hud(private val prefs: Prefs) {
 
         summon.place(cx, h * 0.795f, w * 0.62f, 56f)
         back.place(cx, h * 0.875f, w * 0.4f, 46f)
-        val cols = 4
-        val cellW = w * 0.215f
-        val cellH = 86f
+        val cols = 5
+        val cellW = w * 0.176f
+        val cellH = 74f
         for (i in shipCells.indices) {
             val col = i % cols
             val row = i / cols
             shipCells[i].place(
                 w * 0.5f + (col - (cols - 1) / 2f) * (cellW + 8f),
-                h * 0.47f + row * (cellH + 10f),
+                h * 0.45f + row * (cellH + 8f),
                 cellW, cellH
             )
         }
@@ -399,11 +399,11 @@ class Hud(private val prefs: Prefs) {
                 fade(if (have) s2.color else Palette.DIM, if (isSel) 0.20f else 0.06f),
                 fade(edge, if (have) 0.9f else 0.35f), if (isSel) 2.2f else 1.3f, if (isSel) 1f else 0.4f)
             if (have) {
-                hullIcon(c, s2, cell.cx, cell.cy - 6f, 15f, 1f)
-                Neon.label(c, s2.name, cell.cx, t + cell.h - 9f, 9.5f, s2.color, Paint.Align.CENTER, 0.3f, 0.04f, Neon.FONT_BODY)
+                hullIcon(c, s2, cell.cx, cell.cy - 5f, 13f, 1f)
+                Neon.label(c, s2.name, cell.cx, t + cell.h - 7f, 8.5f, s2.color, Paint.Align.CENTER, 0.25f, 0.02f, Neon.FONT_BODY)
             } else {
-                Neon.label(c, "?", cell.cx, cell.cy + 8f, 26f, fade(Palette.DIM, 0.7f), Paint.Align.CENTER, 0.3f, 0f)
-                Neon.label(c, Rarity.names[s2.rarity], cell.cx, t + cell.h - 9f, 8f, fade(Rarity.colors[s2.rarity], 0.5f), Paint.Align.CENTER, 0.2f, 0.1f, Neon.FONT_BODY)
+                Neon.label(c, "?", cell.cx, cell.cy + 6f, 22f, fade(Palette.DIM, 0.7f), Paint.Align.CENTER, 0.3f, 0f)
+                Neon.label(c, Rarity.names[s2.rarity], cell.cx, t + cell.h - 7f, 7f, fade(Rarity.colors[s2.rarity], 0.5f), Paint.Align.CENTER, 0.2f, 0.08f, Neon.FONT_BODY)
             }
         }
 

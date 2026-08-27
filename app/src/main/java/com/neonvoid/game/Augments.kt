@@ -15,19 +15,26 @@ object Aug {
     const val ORBIT = 3
     const val ARC = 4
     const val PULSE = 5
-    const val ABILITIES = 6
+    const val FLAK = 6
+    const val TETHER = 7
+    const val WING = 8
+    const val ABILITIES = 9
 
     // stat modules
-    const val RAPID = 6
-    const val POWER = 7
-    const val VELOCITY = 8
-    const val AGILITY = 9
-    const val MAGNET = 10
-    const val GRAZE = 11
-    const val ARMOR = 12
-    const val SALVAGE = 13
-    const val REPAIR = 14
-    const val COUNT = 15
+    const val RAPID = 9
+    const val POWER = 10
+    const val VELOCITY = 11
+    const val AGILITY = 12
+    const val MAGNET = 13
+    const val GRAZE = 14
+    const val ARMOR = 15
+    const val SALVAGE = 16
+    const val REPAIR = 17
+    const val COOLANT = 18
+    const val PIERCE = 19
+    const val CRIT = 20
+    const val RECLAIM = 21
+    const val COUNT = 22
 
     /** Abilities cap at 3 before they must evolve, then run to 5 down the chosen branch. */
     const val BASE_MAX = 3
@@ -48,22 +55,27 @@ object Aug {
     const val B = 2
 
     val names = arrayOf(
-        "SPREAD", "LANCE", "SWARM", "ORBIT", "ARC", "PULSE",
-        "RAPID", "POWER", "VELOCITY", "AGILITY", "MAGNET", "GRAZE", "ARMOR", "SALVAGE", "REPAIR"
+        "SPREAD", "LANCE", "SWARM", "ORBIT", "ARC", "PULSE", "FLAK", "TETHER", "WING",
+        "RAPID", "POWER", "VELOCITY", "AGILITY", "MAGNET", "GRAZE", "ARMOR", "SALVAGE",
+        "REPAIR", "COOLANT", "PIERCE", "CRIT", "RECLAIM"
     )
 
-    val statMax = intArrayOf(0, 0, 0, 0, 0, 0, 5, 4, 3, 3, 3, 3, 2, 3, 2)
+    val statMax = intArrayOf(
+        0, 0, 0, 0, 0, 0, 0, 0, 0,
+        5, 4, 3, 3, 3, 3, 2, 3, 2, 3, 2, 3, 3
+    )
 
     val colors = intArrayOf(
         Palette.CYAN, Palette.VIOLET, Palette.LIME, Palette.AMBER, Palette.SKY, Palette.MAGENTA,
+        Palette.RED, Palette.ROSE, Palette.WHITE,
         Palette.CYAN, Palette.RED, Palette.SKY, Palette.LIME, Palette.AMBER, Palette.MAGENTA,
-        Palette.LIME, Palette.AMBER, Palette.ROSE
+        Palette.LIME, Palette.AMBER, Palette.ROSE, Palette.SKY, Palette.VIOLET, Palette.RED, Palette.CYAN
     )
 
     /** Three-letter badge codes for the HUD. */
     val codes = arrayOf(
-        "SPR", "LNC", "SWM", "ORB", "ARC", "PLS",
-        "RPD", "PWR", "VEL", "AGI", "MAG", "GRZ", "ARM", "SLV", "REP"
+        "SPR", "LNC", "SWM", "ORB", "ARC", "PLS", "FLK", "TTH", "WNG",
+        "RPD", "PWR", "VEL", "AGI", "MAG", "GRZ", "ARM", "SLV", "REP", "COL", "PRC", "CRT", "RCL"
     )
 
     val branchNames = arrayOf(
@@ -72,7 +84,10 @@ object Aug {
         arrayOf("HORNETS", "WARHEAD"),
         arrayOf("AEGIS", "SENTRY"),
         arrayOf("TEMPEST", "RAILGUN"),
-        arrayOf("NOVA", "REPULSOR")
+        arrayOf("NOVA", "REPULSOR"),
+        arrayOf("CLUSTER", "AIRBURST"),
+        arrayOf("LEECH", "SIPHON"),
+        arrayOf("ESCORT", "STRIKE")
     )
 
     private val abilityBlurb = arrayOf(
@@ -81,7 +96,10 @@ object Aug {
         "Homing missiles hunt down whatever is closest.",
         "Nodes orbit your hull and shred what they touch.",
         "Lightning leaps from target to target.",
-        "A shockwave detonates outward on a timer."
+        "A shockwave detonates outward on a timer.",
+        "Lobbed shells burst into shrapnel mid-flight.",
+        "A cutting beam latches onto the nearest target.",
+        "Two wingmen fly your flanks and fire with you."
     )
 
     private val branchBlurb = arrayOf(
@@ -90,20 +108,27 @@ object Aug {
         arrayOf("A fast swarm of light seekers.", "One heavy warhead with a blast radius."),
         arrayOf("Bigger nodes that also eat enemy fire.", "Nodes gain their own forward guns."),
         arrayOf("Storms across seven targets at once.", "One devastating bolt that pierces a line."),
-        arrayOf("Huge blast that banks enemy fire as score.", "A constant field that repels enemy fire.")
+        arrayOf("Huge blast that banks enemy fire as score.", "A constant field that repels enemy fire."),
+        arrayOf("Three shells per volley, wider spread.", "One shell, enormous burst and blast damage."),
+        arrayOf("The beam feeds your overdrive as it cuts.", "Cuts far harder and drags the target in."),
+        arrayOf("Wingmen soak incoming fire for you.", "Wingmen carry missiles of their own.")
     )
 
     private val statBlurb = arrayOf(
-        "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "",
         "+10% fire rate.",
         "+1 damage on every shot.",
         "+15% projectile speed.",
         "+6% handling. The ship tracks your thumb harder.",
         "+50% pickup magnet radius.",
-        "+50% overdrive charge from grazing.",
+        "+45% overdrive charge from grazing.",
         "+1 shield capacity, and a shield right now.",
         "+15% score from everything.",
-        "Repair one hull segment."
+        "Repair one hull segment.",
+        "-10% cooldown on every ability system.",
+        "Main gun shots punch through one more enemy.",
+        "+12% chance for a shot to hit twice.",
+        "Pickups top up your overdrive meter."
     )
 
     fun isAbility(id: Int): Boolean = id < ABILITIES
@@ -125,6 +150,9 @@ object Aug {
             SWARM -> "Level $nextLevel: $nextLevel missiles per volley."
             ORBIT -> "Level $nextLevel: $nextLevel nodes, wider orbit."
             ARC -> "Level $nextLevel: ${nextLevel + 1} targets per strike."
+            FLAK -> "Level $nextLevel: more shrapnel, shorter fuse."
+            TETHER -> "Level $nextLevel: the beam bites deeper."
+            WING -> "Level $nextLevel: wingmen fire faster."
             else -> "Level $nextLevel: bigger blast, shorter fuse."
         }
     }
@@ -177,6 +205,10 @@ class Loadout {
     fun grazeCharge(): Float = 0.020f * (1f + 0.45f * lvl[Aug.GRAZE])
     fun maxShield(): Int = 1 + lvl[Aug.ARMOR]
     fun scoreMul(): Float = 1f + 0.15f * lvl[Aug.SALVAGE]
+    fun cooldownMul(): Float = clamp(1f - 0.10f * lvl[Aug.COOLANT], 0.6f, 1f)
+    fun extraPierce(): Int = lvl[Aug.PIERCE]
+    fun critChance(): Float = 0.12f * lvl[Aug.CRIT]
+    fun reclaimCharge(): Float = 0.06f * lvl[Aug.RECLAIM]
 
     // -------------------------------------------------------------- cards
 

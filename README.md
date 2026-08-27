@@ -15,8 +15,8 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
 </p>
 <p align="center">
   <img src="docs/preview/sector-crimson.png" width="32%" alt="Crimson Belt sector" />
+  <img src="docs/preview/sector-violet.png" width="32%" alt="Violet Depths sector" />
   <img src="docs/preview/boss-forge.png" width="32%" alt="Forge boss" />
-  <img src="docs/preview/game-over.png" width="32%" alt="Game over" />
 </p>
 
 > The images above are rendered from the game's own drawing code through a headless
@@ -65,15 +65,25 @@ where big runs are made.
 
 The run moves through five themed sectors, five waves each, then loops at a
 higher difficulty tier. Each sector has its own palette, enemy roster, music
-track and boss.
+track and boss. Difficulty is linear through the opening and quadratic later —
+the first waves stay readable while a fully-augmented ship still meets bosses
+that can kill it. From wave 10 every boss also calls in escorts.
 
 | Sector | Enemies | Boss |
 | --- | --- | --- |
 | **NEON REACH** | Drifters, weavers, chargers | **GUARDIAN** — fans, rings, spiral barrage |
-| **CRIMSON BELT** | Chargers, swarmers, lancers | **WARDEN** — dashes the arena, calls in wings |
-| **VIOLET DEPTHS** | Turrets, orbiters, minelayers | **HIVE** — spawns broods, pulses rings |
-| **GOLD CIRCUIT** | Splitters, turrets, lancers | **FORGE** — armour plates block two thirds of its arc |
+| **CRIMSON BELT** | Chargers, swarmers, lancers, wisps | **WARDEN** — dashes the arena, calls in wings |
+| **VIOLET DEPTHS** | Turrets, orbiters, minelayers, pylons | **HIVE** — spawns broods, pulses rings |
+| **GOLD CIRCUIT** | Splitters, shielders, carriers, lancers | **FORGE** — armour plates block two thirds of its arc |
 | **VOID CORE** | Everything, plus elites | **NULLIFIER** — blinks and answers with mirrored spirals |
+
+Fifteen enemy types in all. Beyond the basics: **LANCER** holds a lane and
+telegraphs a column of fire, **ORBITER** circles a point firing along its
+tangent, **SPLITTER** breaks into faster halves, **MINELAYER** seeds proximity
+mines, **SWARMER** dives in packs, **SHIELDER** holds a plate towards you so
+shots have to come from the flank, **WISP** blinks after every burst,
+**CARRIER** keeps making swarmers until you deal with it, and **PYLON** drops in
+pairs that string a lethal line between them — kill either end to cut it.
 
 Elites start appearing from wave 7 — same silhouette, white halo, far more
 health, much better drops.
@@ -95,6 +105,9 @@ offers are level-ups of what you already carry. Early picks are commitments.
 | **ORBIT** | Nodes that circle your hull and shred what they touch |
 | **ARC** | Lightning that leaps from target to target |
 | **PULSE** | A shockwave that detonates outward on a timer |
+| **FLAK** | Lobbed shells that burst into shrapnel mid-flight |
+| **TETHER** | A cutting beam that latches onto the nearest target |
+| **WING** | Two wingmen fly your flanks and fire with you |
 
 The HUD shows `AUGMENTS n/8` above the lives, and the choice screen shows the
 bay state, so you always know how much room is left.
@@ -112,11 +125,18 @@ levelling to 5 down the path you chose.
 | ORBIT | **AEGIS** — bigger nodes that also eat enemy fire | **SENTRY** — nodes gain their own forward guns |
 | ARC | **TEMPEST** — storms across seven targets | **RAILGUN** — one devastating bolt down a line |
 | PULSE | **NOVA** — huge blast that banks enemy fire as score | **REPULSOR** — a constant field that repels bullets |
+| FLAK | **CLUSTER** — three shells per volley | **AIRBURST** — one shell, enormous burst |
+| TETHER | **LEECH** — the beam feeds your overdrive | **SIPHON** — cuts harder and drags the target in |
+| WING | **ESCORT** — wingmen soak incoming fire | **STRIKE** — wingmen carry missiles |
 
 **Stat modules** are the other half of the offer, repeatable and stackable:
 RAPID (fire rate), POWER (damage), VELOCITY (projectile speed), AGILITY
 (handling), MAGNET (pickup radius), GRAZE (overdrive charge), ARMOR (shield
-capacity), SALVAGE (score), REPAIR (hull).
+capacity), SALVAGE (score), REPAIR (hull), COOLANT (ability cooldowns), PIERCE
+(shots punch through one more enemy), CRIT (chance to hit twice) and RECLAIM
+(pickups top up overdrive).
+
+Twenty-two augments in total, nine of them abilities, for eight bay slots.
 
 Your current kit shows as badges above the lives counter, and in full on the
 pause screen.
@@ -130,10 +150,12 @@ of them a **signature augment** installed free at launch.
 
 | | Hulls |
 | --- | --- |
-| **Common** | VECTOR (baseline), PIKE (heavy rounds, heavy stick), KITE (light and nimble) |
-| **Rare** | BULWARK (four hull segments, a shield, slow guns), VOLT (SPREAD pre-fitted), LANTERN (salvage rig — double magnet, +15% score) |
-| **Epic** | SABRE (LANCE pre-fitted, +11% fire rate), HALO (ORBIT pre-fitted, starts shielded), WRAITH (tiny hitbox, +70% graze, only two hull segments) |
-| **Legendary** | NOVA-9 (PULSE Lv2, +25% score), ARCLIGHT (ARC Lv2, +2 damage) |
+| **Common** | VECTOR (baseline), PIKE (heavy rounds, heavy stick), KITE (light and nimble), SPUR (racing frame) |
+| **Rare** | BULWARK (four hull segments, a shield, slow guns), VOLT (SPREAD pre-fitted), LANTERN (double magnet, +15% score), EMBER (FLAK pre-fitted), GLASS (one hull segment, enormous guns) |
+| **Epic** | SABRE (LANCE pre-fitted), HALO (ORBIT pre-fitted, starts shielded), WRAITH (tiny hitbox, +70% graze), VESPER (TETHER pre-fitted), TITAN (five hull segments, very slow trigger) |
+| **Legendary** | NOVA-9 (PULSE Lv2, +25% score), ARCLIGHT (ARC Lv2, +2 damage), ORACLE (WING Lv2, +20% score), PHANTOM (3.4-unit hitbox, double graze) |
+
+Eighteen hulls in all.
 
 Duplicates refund cores, scaled by rarity.
 
@@ -141,8 +163,10 @@ Duplicates refund cores, scaled by rarity.
 
 Music and effects are generated at runtime by a small software synth — a step
 sequencer driving square, saw, triangle and noise voices through an envelope,
-a one-pole filter and a soft clipper. Six tracks (menu plus one per sector),
-and boss waves switch the arrangement to a busier mix. No audio files ship with
+a sweeping one-pole filter and a soft clipper. Six tracks (menu plus one per
+sector), each built from four alternating bars with an arpeggio layer, a
+detuned lead, octave-jumping bass and a drum fill closing every fourth bar.
+Boss waves switch the arrangement to a busier mix. No audio files ship with
 the game. Music, effects and haptics each toggle from the title screen.
 
 ### Enemies
@@ -236,7 +260,7 @@ validated headlessly here:
   progression, boss spawns and phases, scoring, weapon ramp, augment offers and
   that no wave can stall; runs without invulnerability confirm the damage and
   game-over paths.
-- Every ability path forced and played: all 18 combinations (six abilities, base
+- Every ability path forced and played: all 27 combinations (nine abilities, base
   plus both evolutions) run 150 simulated seconds each without a crash, and land
   within a reasonable band of each other on wave reached and score.
 - The soundtrack rendered offline to WAV and checked for level, clipping and

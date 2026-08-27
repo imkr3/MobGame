@@ -11,6 +11,27 @@ import kotlin.math.sin
  */
 object BossAI {
 
+    /** Late bosses cycle their patterns faster. */
+    private fun tempo(w: World): Float = clamp(1f - w.wave * 0.013f, 0.55f, 1f)
+
+    /** From the second sector loop onwards, every boss brings friends. */
+    private fun escortCheck(w: World, e: Enemy, dt: Float) {
+        if (w.wave < 10) return
+        e.aux2 -= dt
+        if (e.aux2 > 0f) return
+        e.aux2 = clamp(9f - w.wave * 0.12f, 4.5f, 9f)
+        val kind = when (Sectors.index(w.wave)) {
+            0 -> EK.DRIFTER
+            1 -> EK.CHARGER
+            2 -> EK.ORBITER
+            3 -> EK.SPLITTER
+            else -> EK.LANCER
+        }
+        val n = 1 + (w.wave / 12).coerceAtMost(2)
+        for (i in 0 until n) w.spawnMinion(kind, rnd(60f, w.w - 60f), -30f)
+        w.fx.shockwave(e.x, e.y, e.r * 2f, e.color, 0.4f, 2.5f)
+    }
+
     fun update(w: World, e: Enemy, dt: Float) {
         w.setBossHp(clamp(e.hp / e.maxHp, 0f, 1f))
         val ratio = w.bossHpRatio
@@ -47,8 +68,10 @@ object BossAI {
                 if (e.stateT <= 0f) { e.state = 1; e.patternT = 0.6f }
             }
             else -> {
-                e.patternT -= dt
-                e.spiral += dt
+                escortCheck(w, e, dt)
+                val pace = 1f / tempo(w)
+                e.patternT -= dt * pace
+                e.spiral += dt * pace
                 when (e.bossType) {
                     BT.GUARDIAN -> guardian(w, e, dt)
                     BT.WARDEN -> warden(w, e, dt)

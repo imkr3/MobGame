@@ -53,7 +53,7 @@ private class Voice {
 class Synth(private val rate: Int = 22050) {
 
     companion object {
-        const val VOICES = 14
+        const val VOICES = 22
         const val STEPS = 16
 
         /** Natural minor - everything here stays in it. */
@@ -62,64 +62,102 @@ class Synth(private val rate: Int = 22050) {
         private fun midiHz(m: Float): Float = 440f * 2f.pow((m - 69f) / 12f)
     }
 
+    /** One bar of the arrangement. Songs cycle through several of these. */
+    private class Section(
+        val lead: IntArray,
+        val bass: IntArray,       // 0 rest, 1 root, 2 octave up, 3 fifth
+        val drums: IntArray,
+        val arp: Int              // 0 off, 1 eighths, 2 sixteenths
+    )
+
     private class Song(
         val bpm: Float,
         val root: Int,
         val chords: IntArray,
-        val lead: IntArray,
-        val bass: IntArray,
-        val drums: IntArray,
+        val sections: Array<Section>,
         val leadWave: Int,
-        val bassWave: Int
+        val bassWave: Int,
+        val arpWave: Int
     )
 
-    // 1 = kick, 2 = snare, 4 = hat
-    private val fourFloor = intArrayOf(1, 0, 4, 0, 3, 0, 4, 0, 1, 0, 4, 0, 3, 0, 4, 4)
-    private val drivingBeat = intArrayOf(1, 0, 4, 4, 3, 0, 4, 0, 1, 4, 4, 0, 3, 0, 4, 5)
-    private val sparseBeat = intArrayOf(1, 0, 0, 4, 3, 0, 4, 0, 1, 0, 0, 4, 3, 0, 4, 0)
+    // 1 = kick, 2 = snare, 4 = hat, 8 = open hat
+    private val fourFloor = intArrayOf(1, 0, 4, 0, 3, 0, 4, 0, 1, 0, 4, 0, 3, 0, 4, 12)
+    private val drivingBeat = intArrayOf(1, 0, 4, 4, 3, 0, 4, 0, 1, 4, 4, 0, 3, 0, 4, 13)
+    private val sparseBeat = intArrayOf(1, 0, 0, 4, 3, 0, 4, 0, 1, 0, 0, 4, 3, 0, 4, 8)
+    private val hardBeat = intArrayOf(1, 4, 4, 4, 3, 4, 4, 5, 1, 4, 4, 4, 3, 4, 5, 13)
+    /** Played on the last bar of every four - keeps long loops from flattening out. */
+    private val fillBeat = intArrayOf(1, 0, 2, 2, 3, 0, 2, 2, 1, 2, 2, 2, 3, 2, 3, 15)
+
+    private val bassStraight = intArrayOf(1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 2)
+    private val bassOctave = intArrayOf(1, 0, 2, 1, 0, 1, 2, 0, 1, 0, 2, 1, 0, 1, 2, 3)
+    private val bassDriving = intArrayOf(1, 1, 0, 1, 1, 0, 1, 2, 1, 1, 0, 1, 1, 0, 2, 2)
+    private val bassSlow = intArrayOf(1, 0, 0, 0, 0, 0, 3, 0, 1, 0, 0, 0, 2, 0, 0, 0)
+    private val bassPulse = intArrayOf(1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 2, 2, 1, 1)
 
     private val songs = arrayOf(
-        // 0 menu - slow and wide
+        // 0 MENU - wide and patient, but it moves
         Song(
-            bpm = 92f, root = 45, chords = intArrayOf(0, -4, 3, 7),
-            lead = intArrayOf(0, -1, 4, -1, 2, -1, -1, 4, -1, 2, -1, 0, -1, -1, 4, -1),
-            bass = intArrayOf(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0),
-            drums = sparseBeat, leadWave = Wave.TRI, bassWave = Wave.TRI
+            bpm = 100f, root = 45, chords = intArrayOf(0, -4, 3, 7),
+            sections = arrayOf(
+                Section(intArrayOf(0, -1, 4, -1, 2, -1, -1, 4, -1, 2, -1, 0, -1, -1, 4, -1), bassSlow, sparseBeat, 1),
+                Section(intArrayOf(7, -1, 4, 2, -1, 4, -1, 7, 9, -1, 7, 4, -1, 2, -1, -1), bassSlow, sparseBeat, 2)
+            ),
+            leadWave = Wave.TRI, bassWave = Wave.TRI, arpWave = Wave.SQUARE
         ),
         // 1 NEON REACH
         Song(
-            bpm = 126f, root = 45, chords = intArrayOf(0, -4, -2, 3),
-            lead = intArrayOf(0, 2, 4, 2, 7, 4, 2, 4, 0, 2, 4, 7, 9, 7, 4, 2),
-            bass = intArrayOf(1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1),
-            drums = fourFloor, leadWave = Wave.SQUARE, bassWave = Wave.SAW
+            bpm = 132f, root = 45, chords = intArrayOf(0, -4, -2, 3),
+            sections = arrayOf(
+                Section(intArrayOf(0, 2, 4, 2, 7, 4, 2, 4, 0, 2, 4, 7, 9, 7, 4, 2), bassStraight, fourFloor, 2),
+                Section(intArrayOf(7, 9, 11, 9, 7, 4, 7, 9, 11, 9, 7, 9, 14, 11, 9, 7), bassOctave, fourFloor, 2),
+                Section(intArrayOf(0, -1, 4, -1, 7, -1, 4, -1, 2, -1, 7, -1, 9, 7, 4, 2), bassStraight, drivingBeat, 1),
+                Section(intArrayOf(11, 9, 7, 9, 11, 14, 11, 9, 7, 4, 7, 9, 11, 9, 7, 4), bassOctave, drivingBeat, 2)
+            ),
+            leadWave = Wave.SQUARE, bassWave = Wave.SAW, arpWave = Wave.SQUARE
         ),
-        // 2 CRIMSON BELT
+        // 2 CRIMSON BELT - fast and mean
         Song(
-            bpm = 140f, root = 38, chords = intArrayOf(0, -4, 3, -2),
-            lead = intArrayOf(0, 0, 3, 4, 3, 0, -1, 7, 7, 4, 3, 4, -1, 3, 0, -1),
-            bass = intArrayOf(1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1),
-            drums = drivingBeat, leadWave = Wave.SAW, bassWave = Wave.SAW
+            bpm = 146f, root = 38, chords = intArrayOf(0, -4, 3, -2),
+            sections = arrayOf(
+                Section(intArrayOf(0, 0, 3, 4, 3, 0, -1, 7, 7, 4, 3, 4, -1, 3, 0, -1), bassDriving, drivingBeat, 2),
+                Section(intArrayOf(7, 7, 9, 7, 4, 3, 4, 7, 11, 9, 7, 4, 3, 4, 0, 0), bassDriving, hardBeat, 2),
+                Section(intArrayOf(0, 3, 7, 3, 0, 3, 7, 10, 7, 3, 0, 3, 7, 10, 12, 10), bassPulse, hardBeat, 2),
+                Section(intArrayOf(12, 10, 7, 10, 12, 14, 12, 10, 7, 3, 7, 10, 12, 10, 7, 3), bassDriving, drivingBeat, 2)
+            ),
+            leadWave = Wave.SAW, bassWave = Wave.SAW, arpWave = Wave.SQUARE
         ),
-        // 3 VIOLET DEPTHS
+        // 3 VIOLET DEPTHS - moody, then it opens up
         Song(
-            bpm = 118f, root = 36, chords = intArrayOf(0, 5, -4, 3),
-            lead = intArrayOf(7, -1, 4, -1, 2, -1, 4, -1, 0, -1, 2, -1, 4, 7, -1, 4),
-            bass = intArrayOf(1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0),
-            drums = sparseBeat, leadWave = Wave.TRI, bassWave = Wave.SQUARE
+            bpm = 124f, root = 36, chords = intArrayOf(0, 5, -4, 3),
+            sections = arrayOf(
+                Section(intArrayOf(7, -1, 4, -1, 2, -1, 4, -1, 0, -1, 2, -1, 4, 7, -1, 4), bassSlow, sparseBeat, 1),
+                Section(intArrayOf(0, 2, 4, 7, 4, 2, 0, 2, 4, 7, 9, 7, 4, 2, 0, -1), bassStraight, fourFloor, 2),
+                Section(intArrayOf(9, -1, 7, -1, 4, -1, 7, 9, 11, -1, 9, 7, 4, -1, 2, -1), bassSlow, fourFloor, 1),
+                Section(intArrayOf(11, 9, 7, 4, 7, 9, 11, 14, 11, 9, 7, 4, 2, 4, 7, 9), bassOctave, drivingBeat, 2)
+            ),
+            leadWave = Wave.TRI, bassWave = Wave.SQUARE, arpWave = Wave.TRI
         ),
-        // 4 GOLD CIRCUIT
+        // 4 GOLD CIRCUIT - bright arpeggio runs
         Song(
-            bpm = 144f, root = 40, chords = intArrayOf(0, -4, 3, -2),
-            lead = intArrayOf(0, 4, 7, 4, 9, 7, 4, 7, 11, 9, 7, 4, 7, 4, 2, 0),
-            bass = intArrayOf(1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0),
-            drums = drivingBeat, leadWave = Wave.SQUARE, bassWave = Wave.SAW
+            bpm = 150f, root = 40, chords = intArrayOf(0, -4, 3, -2),
+            sections = arrayOf(
+                Section(intArrayOf(0, 4, 7, 4, 9, 7, 4, 7, 11, 9, 7, 4, 7, 4, 2, 0), bassDriving, fourFloor, 2),
+                Section(intArrayOf(7, 11, 14, 11, 9, 7, 4, 7, 11, 14, 16, 14, 11, 7, 4, 2), bassOctave, drivingBeat, 2),
+                Section(intArrayOf(0, -1, 7, -1, 4, -1, 9, -1, 7, -1, 4, -1, 2, 4, 7, 9), bassPulse, hardBeat, 2),
+                Section(intArrayOf(14, 11, 9, 11, 14, 16, 14, 11, 9, 7, 9, 11, 14, 11, 9, 7), bassDriving, hardBeat, 2)
+            ),
+            leadWave = Wave.SQUARE, bassWave = Wave.SAW, arpWave = Wave.SQUARE
         ),
-        // 5 VOID CORE
+        // 5 VOID CORE - relentless
         Song(
-            bpm = 152f, root = 41, chords = intArrayOf(0, -4, 3, -1),
-            lead = intArrayOf(0, 3, 7, 10, 7, 3, 0, 3, 7, 10, 12, 10, 7, 3, 0, -1),
-            bass = intArrayOf(1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1),
-            drums = drivingBeat, leadWave = Wave.SAW, bassWave = Wave.SAW
+            bpm = 158f, root = 41, chords = intArrayOf(0, -4, 3, -1),
+            sections = arrayOf(
+                Section(intArrayOf(0, 3, 7, 10, 7, 3, 0, 3, 7, 10, 12, 10, 7, 3, 0, -1), bassPulse, hardBeat, 2),
+                Section(intArrayOf(12, 10, 7, 10, 12, 14, 12, 10, 7, 10, 12, 14, 16, 14, 12, 10), bassDriving, hardBeat, 2),
+                Section(intArrayOf(0, 0, 3, 0, 7, 0, 3, 0, 10, 0, 7, 0, 3, 0, 0, -1), bassPulse, drivingBeat, 2),
+                Section(intArrayOf(16, 14, 12, 10, 12, 14, 16, 19, 16, 14, 12, 10, 7, 10, 12, 14), bassDriving, hardBeat, 2)
+            ),
+            leadWave = Wave.SAW, bassWave = Wave.SAW, arpWave = Wave.SQUARE
         )
     )
 
@@ -132,6 +170,8 @@ class Synth(private val rate: Int = 22050) {
     private var bar = 0
     private var lp = 0f
     private var noiseState = 987654321
+    private var arpStep = 0
+    private var filterPhase = 0f
 
     var musicOn = true
     var sfxOn = true
@@ -161,8 +201,8 @@ class Synth(private val rate: Int = 22050) {
     private fun freeVoice(reserveMusic: Boolean): Voice {
         // music uses the low half of the pool, effects the high half, so a busy
         // firefight can never silence the track
-        val from = if (reserveMusic) 0 else 6
-        val to = if (reserveMusic) 6 else VOICES
+        val from = if (reserveMusic) 0 else 12
+        val to = if (reserveMusic) 12 else VOICES
         var quietest = from
         var quietestAmp = Float.MAX_VALUE
         for (i in from until to) {
@@ -195,43 +235,73 @@ class Synth(private val rate: Int = 22050) {
 
     // ------------------------------------------------------------- sequencer
 
+    /** Scale degree -> hz, wrapping octaves so long runs keep climbing. */
+    private fun degHz(root: Int, chord: Int, degree: Int, octaveShift: Int): Float {
+        val oct = degree / MINOR.size
+        val semi = MINOR[degree % MINOR.size] + oct * 12
+        return midiHz((root + chord + semi + octaveShift).toFloat())
+    }
+
     private fun advanceStep() {
         val song = songs[songIndex]
         val chord = song.chords[bar % song.chords.size]
+        val section = song.sections[bar % song.sections.size]
+        val isFill = (bar % 4) == 3
 
         if (musicOn) {
-            // bass
-            if (song.bass[step] == 1) {
-                val hz = midiHz((song.root + chord - 12).toFloat())
-                note(song.bassWave, hz, 0.30f, 0.16f, true, 0.35f)
+            // ---- bass: root, octave and fifth give the line some shape
+            when (section.bass[step]) {
+                1 -> note(song.bassWave, midiHz((song.root + chord - 12).toFloat()), 0.32f, 0.16f, true, 0.35f)
+                2 -> note(song.bassWave, midiHz((song.root + chord).toFloat()), 0.26f, 0.13f, true, 0.3f)
+                3 -> note(song.bassWave, midiHz((song.root + chord - 5).toFloat()), 0.26f, 0.15f, true, 0.35f)
             }
-            // lead
-            val deg = song.lead[step]
+
+            // ---- lead, doubled and slightly detuned for width
+            val deg = section.lead[step]
             if (deg >= 0) {
-                val oct = deg / MINOR.size
-                val semi = MINOR[deg % MINOR.size] + oct * 12
-                val hz = midiHz((song.root + chord + semi + 12).toFloat())
-                note(song.leadWave, hz, if (intense) 0.20f else 0.15f, 0.13f, true, 0.28f)
-                if (intense) note(song.leadWave, hz * 2f, 0.07f, 0.09f, true, 0.2f)
+                val hz = degHz(song.root, chord, deg, 12)
+                val amp = if (intense) 0.19f else 0.15f
+                note(song.leadWave, hz, amp, 0.14f, true, 0.28f)
+                note(song.leadWave, hz * 1.0045f, amp * 0.55f, 0.12f, true, 0.32f)
+                if (intense) note(song.leadWave, hz * 2f, 0.06f, 0.09f, true, 0.2f)
             }
-            // pad on the bar
+
+            // ---- arpeggio running through the chord
+            if (section.arp > 0) {
+                val every = if (section.arp == 2) 1 else 2
+                if (step % every == 0) {
+                    val tone = intArrayOf(0, 2, 4, 7)[arpStep % 4]
+                    note(song.arpWave, degHz(song.root, chord, tone, 24), 0.055f, 0.075f, true, 0.2f)
+                    arpStep++
+                }
+            }
+
+            // ---- pad swell on the bar
             if (step == 0) {
                 val base = (song.root + chord).toFloat()
-                note(Wave.TRI, midiHz(base), 0.10f, 1.4f, true, 0.5f, attackMs = 40f)
-                note(Wave.TRI, midiHz(base + 3f), 0.08f, 1.4f, true, 0.5f, attackMs = 40f)
-                note(Wave.TRI, midiHz(base + 7f), 0.07f, 1.4f, true, 0.5f, attackMs = 40f)
+                note(Wave.TRI, midiHz(base), 0.10f, 1.5f, true, 0.5f, attackMs = 45f)
+                note(Wave.TRI, midiHz(base + 3f), 0.08f, 1.5f, true, 0.5f, attackMs = 45f)
+                note(Wave.TRI, midiHz(base + 7f), 0.07f, 1.5f, true, 0.5f, attackMs = 45f)
+                note(Wave.TRI, midiHz(base + 10f), 0.05f, 1.4f, true, 0.5f, attackMs = 60f)
             }
-            // drums
-            val d = song.drums[step]
-            if (d and 1 != 0) note(Wave.SINE, 110f, 0.42f, 0.11f, true, 0.5f, slidePerSec = 0.02f)
-            if (d and 2 != 0) note(Wave.NOISE, 1f, 0.20f, 0.09f, true)
-            if (d and 4 != 0 || (intense && step % 2 == 1)) note(Wave.NOISE, 1f, 0.07f, 0.03f, true)
+
+            // ---- drums, with a fill closing every fourth bar
+            val d = if (isFill) fillBeat[step] else section.drums[step]
+            if (d and 1 != 0) note(Wave.SINE, 118f, 0.46f, 0.12f, true, 0.5f, slidePerSec = 0.02f)
+            if (d and 2 != 0) {
+                note(Wave.NOISE, 1f, 0.22f, 0.10f, true)
+                note(Wave.TRI, 210f, 0.10f, 0.06f, true, 0.5f, slidePerSec = 0.2f)
+            }
+            if (d and 4 != 0) note(Wave.NOISE, 1f, 0.075f, 0.028f, true)
+            if (d and 8 != 0) note(Wave.NOISE, 1f, 0.085f, 0.14f, true)
+            if (intense && step % 2 == 1 && d and 4 == 0) note(Wave.NOISE, 1f, 0.05f, 0.025f, true)
         }
 
         step++
         if (step >= STEPS) {
             step = 0
             bar++
+            arpStep = 0
         }
     }
 
@@ -338,8 +408,10 @@ class Synth(private val rate: Int = 22050) {
                 if (v.phase >= 1f) v.phase -= v.phase.toInt().toFloat()
             }
 
-            // gentle one-pole low pass takes the edge off the square waves
-            lp += (mix - lp) * 0.45f
+            // one-pole low pass with a slow sweep - keeps long loops moving
+            filterPhase += 1f / rate
+            val k = 0.34f + 0.18f * sin(filterPhase * 0.18f * TAU)
+            lp += (mix - lp) * k
             // soft clip
             val shaped = lp / (1f + abs(lp) * 0.7f)
             out[i] = (shaped * 20000f).toInt().coerceIn(-32000, 32000).toShort()
@@ -348,7 +420,7 @@ class Synth(private val rate: Int = 22050) {
 
     /** Resets sequencer position - used when the track changes on a hard cut. */
     fun rewind() {
-        step = 0; bar = 0; stepAcc = 0f
+        step = 0; bar = 0; stepAcc = 0f; arpStep = 0
         for (v in voices) v.active = false
     }
 }

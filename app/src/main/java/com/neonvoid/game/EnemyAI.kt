@@ -1,11 +1,24 @@
 package com.neonvoid.game
 
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
 /** Per-kind enemy behaviour. Bosses live in [BossAI]. */
 object EnemyAI {
+
+    /** Half-width of a shielder's plate, in radians. */
+    const val SHIELD_ARC = 1.05f
+
+    /** True when a shot comes in against a shielder's plate. */
+    fun blocksHit(e: Enemy, bx: Float, by: Float): Boolean {
+        if (e.kind != EK.SHIELDER) return false
+        var d = atan2(by - e.y, bx - e.x) - e.aux
+        while (d > TAU / 2f) d -= TAU
+        while (d < -TAU / 2f) d += TAU
+        return abs(d) < SHIELD_ARC
+    }
 
     fun update(w: World, e: Enemy, dt: Float) {
         when (e.kind) {
@@ -19,6 +32,10 @@ object EnemyAI {
             EK.MINELAYER -> minelayer(w, e, dt)
             EK.SWARMER -> swarmer(w, e, dt)
             EK.MINE -> mine(w, e, dt)
+            EK.SHIELDER -> shielder(w, e, dt)
+            EK.WISP -> wisp(w, e, dt)
+            EK.CARRIER -> carrier(w, e, dt)
+            EK.PYLON -> pylon(w, e, dt)
             EK.BOSS -> BossAI.update(w, e, dt)
         }
     }
@@ -249,6 +266,106 @@ object EnemyAI {
         if (e.stateT <= 0f || close) {
             w.hit(e, 9999f, e.x, e.y, false)     // detonation is handled on death
         }
+    }
+
+    /** Holds a plate towards the player; shots have to come from the flank. */
+    private fun shielder(w: World, e: Enemy, dt: Float) {
+        e.y += e.vy * dt
+        e.x += sin(e.t * 0.6f) * 30f * dt
+        // the plate tracks the player, but slowly enough to be outmanoeuvred
+        if (w.player.alive) {
+            val want = Draw.aimAngle(e.x, e.y, w.player.x, w.player.y)
+            var diff = want - e.aux
+            while (diff > TAU / 2f) diff -= TAU
+            while (diff < -TAU / 2f) diff += TAU
+            e.aux += clamp(diff, -1.3f * dt, 1.3f * dt)
+        }
+        e.fireT -= dt
+        if (e.fireT <= 0f && e.y > 40f && e.y < w.h * 0.75f) {
+            aimed(w, e, -7f, 0.95f)
+            aimed(w, e, 7f, 0.95f)
+            e.fireT = e.fireEvery
+        }
+    }
+
+    /** Blinks around the upper screen and answers with tight bursts. */
+    private fun wisp(w: World, e: Enemy, dt: Float) {
+        if (e.state == 0) {
+            e.y += e.vy * dt
+            if (e.y >= e.holdY) { e.state = 1; e.fireT = 0.8f }
+            return
+        }
+        e.angle = sin(e.t * 4f) * 12f
+        e.fireT -= dt
+        if (e.fireT <= 0f) {
+            for (i in -1..1) aimed(w, e, i * 10f, 1.05f)
+            e.fireT = e.fireEvery
+            e.stateT = 0.45f            // blink shortly after firing
+        }
+        if (e.stateT > 0f) {
+            e.stateT -= dt
+            if (e.stateT <= 0f) {
+                w.fx.burst(e.x, e.y, 14, e.color, 220f, 2.2f, 0.4f, true)
+                e.x = clamp(e.x + rnd(-160f, 160f), 40f, w.w - 40f)
+                e.y = clamp(e.y + rnd(-70f, 70f), w.h * 0.08f, w.h * 0.45f)
+                w.fx.burst(e.x, e.y, 14, Palette.WHITE, 200f, 2.2f, 0.4f, true)
+            }
+        }
+    }
+
+    /** Slow, tanky, and it keeps making swarmers until you deal with it. */
+    private fun carrier(w: World, e: Enemy, dt: Float) {
+        if (e.state == 0) {
+            e.y += e.vy * dt
+            if (e.y >= e.holdY) { e.state = 1; e.fireT = 1.4f }
+            return
+        }
+        e.x += e.vx * dt
+        if (e.x < 50f || e.x > w.w - 50f) e.vx = -e.vx
+        e.y += sin(e.t * 0.6f) * 8f * dt
+        e.fireT -= dt
+        if (e.fireT <= 0f) {
+            val live = w.countActive(EK.SWARMER)
+            if (live < 10) {
+                val n = if (e.elite) 3 else 2
+                for (i in 0 until n) {
+                    val m = w.spawnMinion(EK.SWARMER, e.x + rnd(-e.r, e.r), e.y + e.r * 0.6f)
+                    if (m != null) { m.state = 0; m.stateT = rnd(0.2f, 0.4f) }
+                }
+                w.fx.shockwave(e.x, e.y, e.r * 1.8f, Palette.LIME, 0.35f, 2f)
+            }
+            e.fireT = e.fireEvery
+        }
+    }
+
+    /**
+     * Pylons drop in pairs and string a lethal line between them once armed.
+     * Kill either end to cut it.
+     */
+    private fun pylon(w: World, e: Enemy, dt: Float) {
+        when (e.state) {
+            0 -> {
+                e.y += e.vy * dt
+                if (e.y >= e.holdY) { e.state = 1; e.stateT = 1.1f }
+            }
+            1 -> {
+                e.telegraph = clamp(1f - e.stateT / 1.1f, 0f, 1f)
+                e.stateT -= dt
+                if (e.stateT <= 0f) { e.state = 2; e.telegraph = 1f; e.stateT = 14f }
+            }
+            else -> {
+                e.stateT -= dt
+                e.y += 6f * dt
+                if (e.stateT <= 0f) {
+                    // retire rather than hold a lane forever
+                    e.vy = 120f
+                    e.y += e.vy * dt
+                    e.state = 3
+                }
+            }
+        }
+        if (e.state == 3) e.y += e.vy * dt
+        e.angle = sin(e.t * 2f) * 6f
     }
 
     /** Radial burst a mine leaves behind. Called from the kill path. */

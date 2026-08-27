@@ -55,6 +55,10 @@ class Arsenal(private val fx: Fx) {
     private var arcT = 0f
     private var pulseT = 0f
     private var sentryT = 0f
+    private var flakT = 0f
+    private var wingT = 0f
+    private var tetherIdx = -1
+    private var tetherTick = 0f
     var orbitAngle = 0f
         private set
 
@@ -64,6 +68,7 @@ class Arsenal(private val fx: Fx) {
         for (b in bolts) b.active = false
         nodeCd.fill(0f)
         lanceT = 2.5f; swarmT = 1.2f; arcT = 1.4f; pulseT = 4f; sentryT = 0.9f
+        flakT = 1.6f; wingT = 0.5f; tetherIdx = -1; tetherTick = 0f
         orbitAngle = 0f
     }
 
@@ -104,6 +109,129 @@ class Arsenal(private val fx: Fx) {
         if (lo.has(Aug.ORBIT)) tickOrbit(dt, world)
         if (lo.has(Aug.ARC)) tickArc(dt, world)
         if (lo.has(Aug.PULSE)) tickPulse(dt, world)
+        if (lo.has(Aug.FLAK)) tickFlak(dt, world)
+        if (lo.has(Aug.TETHER)) tickTether(dt, world) else tetherIdx = -1
+        if (lo.has(Aug.WING)) tickWing(dt, world)
+    }
+
+    /** Ability cooldowns, shortened by the COOLANT module. */
+    private fun cd(world: World, seconds: Float): Float = seconds * world.loadout.cooldownMul()
+
+    // ---------------------------------------------------------------- FLAK
+
+    private fun tickFlak(dt: Float, world: World) {
+        val lo = world.loadout
+        val l = lo.lvl[Aug.FLAK]
+        val br = lo.branch[Aug.FLAK]
+        flakT -= dt
+        if (flakT > 0f) return
+        val p = world.player
+        val bonus = lo.damageBonus() + world.ship.damageBonus
+        when (br) {
+            Aug.A -> { // CLUSTER
+                flakT = cd(world, clamp(2.0f - 0.1f * (l - 3), 1.5f, 2.0f))
+                for (i in -1..1) {
+                    world.flakShell(p.x + i * 13f, p.y - 12f, i * 105f, -560f, 5.5f, 3 + bonus, 7, 0.5f, 0f)
+                }
+            }
+            Aug.B -> { // AIRBURST
+                flakT = cd(world, clamp(2.7f - 0.1f * (l - 3), 2.1f, 2.7f))
+                world.flakShell(p.x, p.y - 12f, rnd(-30f, 30f), -520f, 9f, 6 + bonus, 18, 0.62f, 115f)
+            }
+            else -> {
+                flakT = cd(world, 2.7f - 0.25f * l)
+                world.flakShell(p.x, p.y - 12f, rnd(-40f, 40f), -540f, 7f, 3 + l + bonus, 6 + 2 * l, 0.62f - 0.04f * l, 0f)
+            }
+        }
+        fx.cone(p.x, p.y - 14f, 5, -TAU * 0.25f, 0.35f, Palette.RED, 200f, 2f, 0.22f)
+    }
+
+    // -------------------------------------------------------------- TETHER
+
+    private fun tickTether(dt: Float, world: World) {
+        val lo = world.loadout
+        val l = lo.lvl[Aug.TETHER]
+        val br = lo.branch[Aug.TETHER]
+        val p = world.player
+        if (!p.alive) { tetherIdx = -1; return }
+        val range = 230f + 22f * l
+
+        val cur = tetherIdx
+        val keep = cur >= 0 && world.enemies[cur].active &&
+            len(world.enemies[cur].x - p.x, world.enemies[cur].y - p.y) <= range * 1.15f
+        if (!keep) {
+            var best = -1
+            var bestD = range
+            for (i in world.enemies.indices) {
+                val e = world.enemies[i]
+                if (!e.active) continue
+                val d = len(e.x - p.x, e.y - p.y)
+                if (d < bestD) { bestD = d; best = i }
+            }
+            tetherIdx = best
+        }
+        val idx = tetherIdx
+        if (idx < 0) return
+        val e = world.enemies[idx]
+
+        val dps = when (br) {
+            Aug.A -> 24f + 9f * l
+            Aug.B -> 46f + 15f * l
+            else -> 20f + 10f * l
+        }
+        world.hit(e, dps * dt, e.x, e.y, false)
+        tetherTick -= dt
+        if (tetherTick <= 0f) {
+            tetherTick = 0.1f
+            fx.cone(e.x, e.y, 2, Draw.aimAngle(e.x, e.y, p.x, p.y), 0.6f, Palette.ROSE, 130f, 1.6f, 0.22f)
+        }
+        when (br) {
+            Aug.A -> p.overdrive = clamp(p.overdrive + 0.014f * dt * l, 0f, 1f)   // LEECH
+            Aug.B -> {                                                            // SIPHON drags it in
+                val a = Draw.aimAngle(e.x, e.y, p.x, p.y)
+                e.x += cos(a) * 46f * dt
+                e.y += sin(a) * 46f * dt
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- WING
+
+    private fun wingCount(lo: Loadout): Int = if (lo.lvl[Aug.WING] >= 5) 3 else 2
+
+    private fun wingOffset(lo: Loadout, i: Int): Float {
+        val spread = 30f + 5f * lo.lvl[Aug.WING]
+        val n = wingCount(lo)
+        return (i - (n - 1) * 0.5f) * spread * 2f
+    }
+
+    private fun tickWing(dt: Float, world: World) {
+        val lo = world.loadout
+        val l = lo.lvl[Aug.WING]
+        val br = lo.branch[Aug.WING]
+        val p = world.player
+        if (!p.alive) return
+        val n = wingCount(lo)
+        val bonus = lo.damageBonus() + world.ship.damageBonus
+
+        if (br == Aug.A) {
+            for (i in 0 until n) {
+                world.eatBulletsWithin(p.x + wingOffset(lo, i), p.y + 6f, 11f)
+            }
+        }
+        wingT -= dt
+        if (wingT > 0f) return
+        wingT = cd(world, if (br == Aug.B) clamp(1.6f - 0.1f * (l - 3), 1.2f, 1.6f) else clamp(0.6f - 0.045f * l, 0.32f, 0.6f))
+        for (i in 0 until n) {
+            val wx = p.x + wingOffset(lo, i)
+            val wy = p.y + 6f
+            if (br == Aug.B) {
+                val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 6 + l + bonus, Palette.WHITE)
+                m.turn = 4.5f
+            } else {
+                world.allyBullet(wx, wy, 0f, -880f, 3.4f, 2 + l + bonus, Palette.WHITE, 1)
+            }
+        }
     }
 
     private fun updateBeams(dt: Float, world: World) {
@@ -152,7 +280,7 @@ class Arsenal(private val fx: Fx) {
         val p = world.player
         when (b) {
             Aug.A -> { // PRISM: three fanning beams
-                lanceT = clamp(2.3f - 0.15f * (l - 3), 1.6f, 2.3f)
+                lanceT = cd(world, clamp(2.3f - 0.15f * (l - 3), 1.6f, 2.3f))
                 val dps = 34f + 12f * l
                 beam(p.x, 7f, dps, 0.4f, Palette.CYAN, 0f)
                 beam(p.x - 26f, 6f, dps * 0.8f, 0.4f, Palette.VIOLET, -150f)
@@ -160,7 +288,7 @@ class Arsenal(private val fx: Fx) {
                 fx.shake(0.1f)
             }
             Aug.B -> { // SIEGE: one ruinous column
-                lanceT = clamp(3.4f - 0.2f * (l - 3), 2.6f, 3.4f)
+                lanceT = cd(world, clamp(3.4f - 0.2f * (l - 3), 2.6f, 3.4f))
                 beam(p.x, 24f, 150f + 34f * (l - 3), 0.55f, Palette.WHITE, 0f)
                 fx.shake(0.42f)
                 fx.flash(Palette.VIOLET, 0.22f)
@@ -168,7 +296,7 @@ class Arsenal(private val fx: Fx) {
                 world.haptic().medium()
             }
             else -> {
-                lanceT = 3.4f - 0.5f * l
+                lanceT = cd(world, 3.4f - 0.5f * l)
                 beam(p.x, 5f + 2.5f * l, 24f + 14f * l, 0.35f, Palette.VIOLET, 0f)
                 world.sound?.sfx(Sfx.LASER)
                 fx.shake(0.12f)
@@ -189,20 +317,20 @@ class Arsenal(private val fx: Fx) {
         val bonus = lo.damageBonus()
         when (b) {
             Aug.A -> { // HORNETS
-                swarmT = clamp(1.25f - 0.08f * (l - 3), 0.9f, 1.25f)
+                swarmT = cd(world, clamp(1.25f - 0.08f * (l - 3), 0.9f, 1.25f))
                 for (i in 0 until 5) {
                     val m = world.missile(p.x, p.y - 8f, rnd(-260f, 260f), rnd(-380f, -180f), 3.4f, 4 + bonus, Palette.LIME)
                     m.turn = 7.5f
                 }
             }
             Aug.B -> { // WARHEAD
-                swarmT = clamp(2.1f - 0.12f * (l - 3), 1.6f, 2.1f)
+                swarmT = cd(world, clamp(2.1f - 0.12f * (l - 3), 1.6f, 2.1f))
                 val m = world.missile(p.x, p.y - 12f, rnd(-40f, 40f), -230f, 7f, 16 + bonus * 2, Palette.AMBER)
                 m.turn = 2.6f
                 m.splash = 92f
             }
             else -> {
-                swarmT = 2.0f - 0.2f * l
+                swarmT = cd(world, 2.0f - 0.2f * l)
                 for (i in 0 until l) {
                     val spread = (i - (l - 1) * 0.5f) * 130f
                     val m = world.missile(p.x, p.y - 8f, spread, -260f, 4.2f, 5 + l + bonus, Palette.LIME)
@@ -256,7 +384,7 @@ class Arsenal(private val fx: Fx) {
         if (sentry) {
             sentryT -= dt
             if (sentryT <= 0f) {
-                sentryT = 0.7f
+                sentryT = cd(world, 0.7f)
                 for (i in 0 until count) {
                     val a = orbitAngle + i * TAU / count
                     val nx = p.x + cos(a) * orbit
@@ -299,7 +427,7 @@ class Arsenal(private val fx: Fx) {
         val p = world.player
 
         if (b == Aug.B) { // RAILGUN: a line straight up the lane
-            arcT = clamp(2.1f - 0.15f * (l - 3), 1.5f, 2.1f)
+            arcT = cd(world, clamp(2.1f - 0.15f * (l - 3), 1.5f, 2.1f))
             val dmg = 42f + 14f * (l - 3)
             val bolt = obtainBolt() ?: return
             bolt.active = true
@@ -324,11 +452,11 @@ class Arsenal(private val fx: Fx) {
         val targets: Int
         val dmg: Float
         if (b == Aug.A) { // TEMPEST
-            arcT = clamp(0.95f - 0.05f * (l - 3), 0.7f, 0.95f)
+            arcT = cd(world, clamp(0.95f - 0.05f * (l - 3), 0.7f, 0.95f))
             targets = 7
             dmg = 6f + 1.6f * (l - 3)
         } else {
-            arcT = 1.8f - 0.2f * l
+            arcT = cd(world, 1.8f - 0.2f * l)
             targets = l + 1
             dmg = 5f + 2f * l
         }
@@ -405,7 +533,7 @@ class Arsenal(private val fx: Fx) {
         n.r = 0f
         n.hit.fill(false)
         if (b == Aug.A) { // NOVA
-            pulseT = clamp(4.3f - 0.3f * (l - 3), 3.2f, 4.3f)
+            pulseT = cd(world, clamp(4.3f - 0.3f * (l - 3), 3.2f, 4.3f))
             n.maxR = 330f + 22f * (l - 3)
             n.damage = 26f + 7f * (l - 3)
             n.maxLife = 0.75f
@@ -415,7 +543,7 @@ class Arsenal(private val fx: Fx) {
             fx.flash(Palette.AMBER, 0.25f)
             world.haptic().medium()
         } else {
-            pulseT = 8f - l
+            pulseT = cd(world, 8f - l)
             n.maxR = 110f + 46f * l
             n.damage = 6f + 4f * l
             n.maxLife = 0.6f
@@ -462,6 +590,42 @@ class Arsenal(private val fx: Fx) {
             val t = b.life / b.maxLife
             for (i in 0 until b.n - 1) {
                 Neon.line(c, b.px[i], b.py[i], b.px[i + 1], b.py[i + 1], fade(b.color, t), b.width * t + 0.8f, 1.2f)
+            }
+        }
+
+        // tether beam
+        val ti = tetherIdx
+        if (lo.has(Aug.TETHER) && ti >= 0 && world.enemies[ti].active && p.alive) {
+            val e = world.enemies[ti]
+            val col = if (lo.branch[Aug.TETHER] == Aug.B) Palette.RED else Palette.ROSE
+            val n = 6
+            var px = p.x
+            var py = p.y - 10f
+            for (i in 1..n) {
+                val f = i / n.toFloat()
+                val jitter = if (i == n) 0f else rnd(-7f, 7f)
+                val nx = lerp(p.x, e.x, f) + jitter
+                val ny = lerp(p.y - 10f, e.y, f) + rnd(-5f, 5f)
+                Neon.line(c, px, py, nx, ny, fade(col, 0.85f), 2.4f, 1.1f)
+                px = nx; py = ny
+            }
+            Neon.ring(c, e.x, e.y, e.r * 1.25f, fade(col, 0.6f), 1.8f, 0.9f)
+        }
+
+        // wingmen
+        if (lo.has(Aug.WING) && p.alive) {
+            val escort = lo.branch[Aug.WING] == Aug.A
+            val col = if (escort) Palette.LIME else Palette.WHITE
+            for (i in 0 until wingCount(lo)) {
+                val wx = p.x + wingOffset(lo, i)
+                val wy = p.y + 6f
+                c.save()
+                c.translate(wx, wy)
+                c.scale(8f, 8f)
+                Neon.fillPath(c, Shapes.player, fade(col, 0.2f))
+                Neon.path(c, Shapes.player, fade(col, 0.95f), 1.6f / 8f, 0.9f, 0.8f)
+                c.restore()
+                if (escort) Neon.ring(c, wx, wy, 11f, fade(Palette.LIME, 0.45f), 1.2f, 0.6f)
             }
         }
 
