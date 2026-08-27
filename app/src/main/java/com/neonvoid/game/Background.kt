@@ -18,6 +18,7 @@ class Background {
         var x = 0f; var y = 0f; var speed = 0f; var size = 0f; var color = Palette.WHITE
     }
 
+    private var theme: Sector = Sectors.list[0]
     private var w = 0f
     private var h = 0f
     private var horizon = 0f
@@ -37,13 +38,22 @@ class Background {
 
     private val gridCols = 15
 
+    /** Swap the sector palette; rebuilds the shaders in place. */
+    fun applyTheme(sector: Sector) {
+        if (theme === sector) return
+        theme = sector
+        if (w > 0f && h > 0f) resize(w, h)
+    }
+
+    fun themeAccent(): Int = theme.accent
+
     fun resize(width: Float, height: Float) {
         w = width; h = height
         horizon = h * 0.30f
 
         bgPaint.shader = LinearGradient(
             0f, 0f, 0f, h,
-            intArrayOf(Palette.BG_TOP, Palette.BG_MID, Palette.BG_BOTTOM),
+            intArrayOf(theme.skyTop, theme.skyMid, theme.skyBottom),
             floatArrayOf(0f, 0.45f, 1f),
             Shader.TileMode.CLAMP
         )
@@ -55,7 +65,7 @@ class Background {
         // out-shouts the ships crossing in front of it.
         sunPaint.shader = LinearGradient(
             0f, sunCy - sunR, 0f, horizon,
-            intArrayOf(0xCCFFE07A.toInt(), 0xC6FFB13D.toInt(), 0xBFFF4FA3.toInt(), 0xB3B13BFF.toInt()),
+            theme.sunStops,
             floatArrayOf(0f, 0.35f, 0.72f, 1f),
             Shader.TileMode.CLAMP
         )
@@ -64,7 +74,7 @@ class Background {
         nebulaR = w * 0.85f
         nebulaPaint.shader = RadialGradient(
             0f, 0f, nebulaR,
-            intArrayOf(fade(Palette.VIOLET, 0.30f), fade(Palette.MAGENTA, 0.10f), fade(Palette.MAGENTA, 0f)),
+            intArrayOf(fade(theme.nebula, 0.30f), fade(theme.accent, 0.10f), fade(theme.accent, 0f)),
             floatArrayOf(0f, 0.55f, 1f),
             Shader.TileMode.CLAMP
         )
@@ -76,8 +86,8 @@ class Background {
             s.speed = rnd(6f, 46f)
             s.size = rnd(0.7f, 2.2f)
             s.color = when {
-                chance(0.18f) -> Palette.MAGENTA
-                chance(0.30f) -> Palette.CYAN
+                chance(0.18f) -> theme.accent
+                chance(0.30f) -> theme.grid
                 else -> Palette.WHITE
             }
         }
@@ -144,16 +154,16 @@ class Background {
             band *= 0.80f
             gap *= 1.24f
         }
-        Neon.hairline(c, 0f, horizon, w, horizon, fade(Palette.MAGENTA, 0.55f), 2.2f)
-        Neon.hairline(c, 0f, horizon, w, horizon, fade(Palette.ROSE, 0.16f), 8f)
+        Neon.hairline(c, 0f, horizon, w, horizon, fade(theme.accent, 0.55f), 2.2f)
+        Neon.hairline(c, 0f, horizon, w, horizon, fade(theme.accent, 0.16f), 8f)
 
         // perspective grid
         val depth = h - horizon
-        val gridColor = fade(Palette.CYAN, 0.15f)
+        val gridColor = fade(theme.grid, 0.15f)
         val vpX = cx
         for (i in -gridCols..gridCols) {
             val bx = cx + i * (w * 0.135f)
-            Neon.hairline(c, vpX, horizon, bx, h, fade(Palette.VIOLET, 0.13f), 1.2f)
+            Neon.hairline(c, vpX, horizon, bx, h, fade(theme.nebula, 0.13f), 1.2f)
         }
         val rows = 13
         for (i in 0 until rows) {

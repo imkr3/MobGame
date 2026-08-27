@@ -164,11 +164,13 @@ class Arsenal(private val fx: Fx) {
                 beam(p.x, 24f, 150f + 34f * (l - 3), 0.55f, Palette.WHITE, 0f)
                 fx.shake(0.42f)
                 fx.flash(Palette.VIOLET, 0.22f)
+                world.sound?.sfx(Sfx.LASER)
                 world.haptic().medium()
             }
             else -> {
                 lanceT = 3.4f - 0.5f * l
                 beam(p.x, 5f + 2.5f * l, 24f + 14f * l, 0.35f, Palette.VIOLET, 0f)
+                world.sound?.sfx(Sfx.LASER)
                 fx.shake(0.12f)
             }
         }
@@ -282,7 +284,7 @@ class Arsenal(private val fx: Fx) {
                     }
                 }
             }
-            if (aegis) world.eatBulletsWithin(nx, ny, nodeR + 5f)
+            if (aegis) world.eatBulletsWithin(nx, ny, nodeR + 1f)
         }
     }
 
@@ -381,7 +383,7 @@ class Arsenal(private val fx: Fx) {
 
         if (b == Aug.B) { // REPULSOR: a constant field, not a timed blast
             val r = 104f + 9f * l
-            world.pushBulletsWithin(p.x, p.y, r, 340f)
+            world.pushBulletsWithin(p.x, p.y, r, 250f)
             pulseT -= dt
             if (pulseT <= 0f) {
                 pulseT = 0.25f

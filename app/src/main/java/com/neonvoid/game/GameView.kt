@@ -59,6 +59,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     // -------------------------------------------------------------- thread
 
     fun onResumeGame() {
+        game.onAppResume()
         startLoop()
     }
 

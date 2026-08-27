@@ -34,7 +34,14 @@ object Aug {
     const val EVOLVED_MAX = 5
 
     /** Keeps runs specialised: you cannot hoard every ability in one run. */
-    const val MAX_ABILITIES = 4
+    const val MAX_ABILITIES = 3
+
+    /**
+     * Hard cap on distinct augments installed. Once the bay is full the only
+     * offers are level-ups of what you already carry, so early picks are
+     * commitments rather than a shopping list.
+     */
+    const val MAX_SLOTS = 8
 
     // branch ids
     const val A = 1
@@ -45,7 +52,7 @@ object Aug {
         "RAPID", "POWER", "VELOCITY", "AGILITY", "MAGNET", "GRAZE", "ARMOR", "SALVAGE", "REPAIR"
     )
 
-    val statMax = intArrayOf(0, 0, 0, 0, 0, 0, 5, 4, 3, 3, 3, 3, 2, 3, 3)
+    val statMax = intArrayOf(0, 0, 0, 0, 0, 0, 5, 4, 3, 3, 3, 3, 2, 3, 2)
 
     val colors = intArrayOf(
         Palette.CYAN, Palette.VIOLET, Palette.LIME, Palette.AMBER, Palette.SKY, Palette.MAGENTA,
@@ -147,6 +154,10 @@ class Loadout {
 
     fun ownedAbilities(): Int = (0 until Aug.ABILITIES).count { lvl[it] > 0 }
 
+    fun slotsUsed(): Int = (0 until Aug.COUNT).count { lvl[it] > 0 }
+
+    fun slotsFull(): Boolean = slotsUsed() >= Aug.MAX_SLOTS
+
     fun canEvolve(id: Int): Boolean =
         Aug.isAbility(id) && lvl[id] >= Aug.BASE_MAX && branch[id] == 0
 
@@ -163,8 +174,8 @@ class Loadout {
     fun bulletSpeedMul(): Float = 1f + 0.15f * lvl[Aug.VELOCITY]
     fun handling(): Float = clamp(0.42f + 0.055f * lvl[Aug.AGILITY], 0.42f, 0.72f)
     fun magnetRadius(): Float = 130f * (1f + 0.5f * lvl[Aug.MAGNET])
-    fun grazeCharge(): Float = 0.035f * (1f + 0.5f * lvl[Aug.GRAZE])
-    fun maxShield(): Int = 2 + lvl[Aug.ARMOR]
+    fun grazeCharge(): Float = 0.020f * (1f + 0.45f * lvl[Aug.GRAZE])
+    fun maxShield(): Int = 1 + lvl[Aug.ARMOR]
     fun scoreMul(): Float = 1f + 0.15f * lvl[Aug.SALVAGE]
 
     // -------------------------------------------------------------- cards
@@ -206,10 +217,12 @@ class Loadout {
         }
 
         val pool = ArrayList<Int>()
-        val abilityRoom = ownedAbilities() < Aug.MAX_ABILITIES
+        val bayFull = slotsFull()
+        val abilityRoom = ownedAbilities() < Aug.MAX_ABILITIES && !bayFull
         for (id in 0 until Aug.COUNT) {
             if (out.any { it.id == id }) continue
             if (!canLevel(id)) continue
+            if (lvl[id] == 0 && bayFull) continue
             if (Aug.isAbility(id) && lvl[id] == 0 && !abilityRoom) continue
             val weight = when {
                 Aug.isAbility(id) && lvl[id] == 0 -> 4

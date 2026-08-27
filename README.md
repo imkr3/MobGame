@@ -9,8 +9,13 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
   <img src="docs/preview/augments.png" width="32%" alt="Augment choice" />
 </p>
 <p align="center">
+  <img src="docs/preview/hangar.png" width="32%" alt="Hangar" />
+  <img src="docs/preview/summon.png" width="32%" alt="Summon reveal" />
   <img src="docs/preview/abilities.png" width="32%" alt="Beams, orbitals and missiles" />
-  <img src="docs/preview/boss.png" width="32%" alt="Boss encounter" />
+</p>
+<p align="center">
+  <img src="docs/preview/sector-crimson.png" width="32%" alt="Crimson Belt sector" />
+  <img src="docs/preview/boss-forge.png" width="32%" alt="Forge boss" />
   <img src="docs/preview/game-over.png" width="32%" alt="Game over" />
 </p>
 
@@ -56,13 +61,31 @@ Ramming enemies during it destroys them.
 your last kill. It resets when you're hit — the multiplier, not the raw score, is
 where big runs are made.
 
+### Sectors
+
+The run moves through five themed sectors, five waves each, then loops at a
+higher difficulty tier. Each sector has its own palette, enemy roster, music
+track and boss.
+
+| Sector | Enemies | Boss |
+| --- | --- | --- |
+| **NEON REACH** | Drifters, weavers, chargers | **GUARDIAN** — fans, rings, spiral barrage |
+| **CRIMSON BELT** | Chargers, swarmers, lancers | **WARDEN** — dashes the arena, calls in wings |
+| **VIOLET DEPTHS** | Turrets, orbiters, minelayers | **HIVE** — spawns broods, pulses rings |
+| **GOLD CIRCUIT** | Splitters, turrets, lancers | **FORGE** — armour plates block two thirds of its arc |
+| **VOID CORE** | Everything, plus elites | **NULLIFIER** — blinks and answers with mirrored spirals |
+
+Elites start appearing from wave 7 — same silhouette, white halo, far more
+health, much better drops.
+
 ### Augments
 
 Clear a wave and the run pauses for a **system upgrade**: three cards, pick one.
 There are two kinds.
 
-**Abilities** are whole new weapon systems. You can carry at most **four** in a
-run, so every run specialises:
+**Abilities** are whole new weapon systems. You can carry at most **three**, and
+the augment bay holds **eight augments in total** — once it is full the only
+offers are level-ups of what you already carry. Early picks are commitments.
 
 | | What it does |
 | --- | --- |
@@ -72,6 +95,9 @@ run, so every run specialises:
 | **ORBIT** | Nodes that circle your hull and shred what they touch |
 | **ARC** | Lightning that leaps from target to target |
 | **PULSE** | A shockwave that detonates outward on a timer |
+
+The HUD shows `AUGMENTS n/8` above the lives, and the choice screen shows the
+bay state, so you always know how much room is left.
 
 **Split choices.** Level an ability to 3 and it must **evolve** — and the next
 offer puts *both* branches on the table together, so the fork is always an
@@ -94,6 +120,30 @@ capacity), SALVAGE (score), REPAIR (hull).
 
 Your current kit shows as badges above the lives counter, and in full on the
 pause screen.
+
+### Hangar
+
+Runs pay out **cores** — from score and from waves cleared. Spend them in the
+hangar to summon new hulls. There are eleven, across four rarities, and each
+one changes how a run plays: its own silhouette, its own stat profile, and most
+of them a **signature augment** installed free at launch.
+
+| | Hulls |
+| --- | --- |
+| **Common** | VECTOR (baseline), PIKE (heavy rounds, heavy stick), KITE (light and nimble) |
+| **Rare** | BULWARK (four hull segments, a shield, slow guns), VOLT (SPREAD pre-fitted), LANTERN (salvage rig — double magnet, +15% score) |
+| **Epic** | SABRE (LANCE pre-fitted, +11% fire rate), HALO (ORBIT pre-fitted, starts shielded), WRAITH (tiny hitbox, +70% graze, only two hull segments) |
+| **Legendary** | NOVA-9 (PULSE Lv2, +25% score), ARCLIGHT (ARC Lv2, +2 damage) |
+
+Duplicates refund cores, scaled by rarity.
+
+### Sound
+
+Music and effects are generated at runtime by a small software synth — a step
+sequencer driving square, saw, triangle and noise voices through an envelope,
+a one-pole filter and a soft clipper. Six tracks (menu plus one per sector),
+and boss waves switch the arrangement to a busier mix. No audio files ship with
+the game. Music, effects and haptics each toggle from the title screen.
 
 ### Enemies
 
@@ -135,6 +185,12 @@ app/src/main/java/com/neonvoid/game/
                     director, boss patterns, scoring
   Augments.kt       Augment catalogue, evolution branches, offer generation
                     and every stat the loadout derives
+  Sectors.kt        Themed sector table: palettes, rosters, bosses, music
+  EnemyAI.kt        Per-kind enemy behaviour
+  Bosses.kt         The five boss archetypes and their phases
+  Ships.kt          Hull roster, rarities, gacha rolls, hull silhouettes
+  Synth.kt          Procedural music and sound effects (no Android deps)
+  Audio.kt          AudioTrack pump feeding the synth
   Arsenal.kt        Ability systems: beams, homing swarms, orbital nodes,
                     chain lightning and shockwave novas
   Entities.kt       Entity structs, ship silhouettes, entity rendering
@@ -157,7 +213,10 @@ layout and difficulty are identical on every screen size.
 Most of the feel lives in a handful of constants:
 
 - `World.GRAZE_R`, `OD_DURATION`, `COMBO_WINDOW` — the risk/reward loop
-- `Aug.MAX_ABILITIES`, `BASE_MAX`, `EVOLVED_MAX` — how specialised a run gets
+- `Aug.MAX_SLOTS`, `MAX_ABILITIES`, `BASE_MAX`, `EVOLVED_MAX` — how specialised
+  a run gets and how hard the choices bite
+- `Sectors.list` — sector palettes, enemy rosters and boss assignment
+- `ShipDex.list` / `Rarity.weights` — hull stats and pull rates
 - `Loadout` derived getters — what each stat module is worth
 - `Arsenal.tick*` — cadence and damage for every ability and branch
 - `World.spawnEnemy` — per-enemy HP, speed and fire rates, plus the per-wave scaling
@@ -180,8 +239,12 @@ validated headlessly here:
 - Every ability path forced and played: all 18 combinations (six abilities, base
   plus both evolutions) run 150 simulated seconds each without a crash, and land
   within a reasonable band of each other on wave reached and score.
-- Driven through every UI transition with synthetic touches: menu → play →
-  augment choice → pause → resume → app-pause → back → death → retry.
+- The soundtrack rendered offline to WAV and checked for level, clipping and
+  rhythmic structure — the synth is deliberately free of Android imports so the
+  audio that ships is the audio that was inspected.
+- Driven through every UI transition with synthetic touches: menu → hangar →
+  summon → reveal → hull select → play → augment choice → pause → resume →
+  app-pause → back → death → retry.
 - Rendered to PNG by backing the Canvas stubs with Java2D, which produced the
   screenshots above.
 

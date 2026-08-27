@@ -13,6 +13,18 @@ object EK {
     const val CHARGER = 2
     const val TURRET = 3
     const val BOSS = 4
+    const val LANCER = 5
+    const val ORBITER = 6
+    const val SPLITTER = 7
+    const val MINELAYER = 8
+    const val SWARMER = 9
+    const val MINE = 10
+    const val COUNT = 11
+
+    val displayNames = arrayOf(
+        "DRIFTER", "WEAVER", "CHARGER", "TURRET", "BOSS",
+        "LANCER", "ORBITER", "SPLITTER", "MINELAYER", "SWARMER", "MINE"
+    )
 }
 
 object PK {
@@ -42,6 +54,8 @@ class Bullet {
     var splash = 0f          // blast radius on impact
 }
 
+fun Enemy.seedPhase(): Float = (x + y) * 0.05f
+
 class Enemy {
     var active = false
     var kind = EK.DRIFTER
@@ -66,6 +80,13 @@ class Enemy {
     var patternT = 0f
     var spiral = 0f
     var dropBias = 1f
+    var bossType = BT.GUARDIAN
+    var seed = 0f            // stable per-enemy phase offset
+    var tier = 0             // splitter generation
+    var elite = false
+    var aux = 0f             // per-kind scratch (charge timers, orbit centres)
+    var aux2 = 0f
+    var telegraph = 0f       // 0..1 wind-up indicator
 }
 
 class PowerUp {
@@ -92,7 +113,8 @@ class Player {
     var respawnT = 0f
     var bank = 0f                     // visual roll from lateral movement
     var thrust = 0f
-    val hitR = 5.5f                   // small hitbox: grazing is the point
+    var shipId = 0
+    var hitR = 5.5f                   // small hitbox: grazing is the point
     val bodyR = 15f
 }
 
@@ -167,6 +189,65 @@ object Shapes {
         lineTo(-0.32f, 0f)
         close()
     }
+    val lancer: Path = Path().apply {
+        moveTo(0f, 1.25f)
+        lineTo(0.30f, 0.35f)
+        lineTo(0.75f, 0.05f)
+        lineTo(0.45f, -0.55f)
+        lineTo(0.18f, -0.30f)
+        lineTo(-0.18f, -0.30f)
+        lineTo(-0.45f, -0.55f)
+        lineTo(-0.75f, 0.05f)
+        lineTo(-0.30f, 0.35f)
+        close()
+    }
+    val orbiter: Path = Path().apply {
+        moveTo(0f, 1f)
+        lineTo(0.7f, 0.35f)
+        lineTo(0.5f, -0.5f)
+        lineTo(0f, -0.85f)
+        lineTo(-0.5f, -0.5f)
+        lineTo(-0.7f, 0.35f)
+        close()
+    }
+    val splitter: Path = Path().apply {
+        moveTo(0f, 0.95f)
+        lineTo(0.62f, 0.62f)
+        lineTo(0.9f, 0f)
+        lineTo(0.62f, -0.62f)
+        lineTo(0f, -0.5f)
+        lineTo(-0.62f, -0.62f)
+        lineTo(-0.9f, 0f)
+        lineTo(-0.62f, 0.62f)
+        close()
+    }
+    val minelayer: Path = Path().apply {
+        moveTo(0f, 0.7f)
+        lineTo(1.15f, 0.45f)
+        lineTo(1.0f, -0.35f)
+        lineTo(0.4f, -0.7f)
+        lineTo(-0.4f, -0.7f)
+        lineTo(-1.0f, -0.35f)
+        lineTo(-1.15f, 0.45f)
+        close()
+    }
+    val swarmer: Path = Path().apply {
+        moveTo(0f, 1.15f)
+        lineTo(0.6f, -0.3f)
+        lineTo(0f, -0.6f)
+        lineTo(-0.6f, -0.3f)
+        close()
+    }
+    val mine: Path = Path().apply {
+        for (i in 0 until 8) {
+            val a = i * TAU / 8f
+            val r = if (i % 2 == 0) 1f else 0.52f
+            val px = cos(a) * r
+            val py = sin(a) * r
+            if (i == 0) moveTo(px, py) else lineTo(px, py)
+        }
+        close()
+    }
     val diamond: Path = Path().apply {
         moveTo(0f, -1f)
         lineTo(1f, 0f)
@@ -182,11 +263,13 @@ object Draw {
         if (!p.alive) return
         val blink = p.invuln > 0f && ((timeNow * 22f).toInt() % 2 == 0)
         val od = p.odTime > 0f
+        val ship = ShipDex.byId(p.shipId)
         val baseColor = when {
             od -> Palette.AMBER
             p.shield > 0 -> Palette.LIME
-            else -> Palette.CYAN
+            else -> ship.color
         }
+        val hull = Hulls.of(ship)
         val a = if (blink) 0.42f else 1f
         val s = p.bodyR
 
@@ -199,8 +282,8 @@ object Draw {
         c.translate(p.x, p.y)
         c.rotate(p.bank * 16f)
         c.scale(s, s)
-        Neon.fillPath(c, Shapes.player, fade(baseColor, 0.16f * a))
-        Neon.path(c, Shapes.player, fade(baseColor, a), 1.7f / s, 1f, 0.9f)
+        Neon.fillPath(c, hull, fade(baseColor, 0.16f * a))
+        Neon.path(c, hull, fade(baseColor, a), 1.7f / s, 1f, 0.9f)
         Neon.path(c, Shapes.playerWing, fade(lighten(baseColor, 0.3f), 0.8f * a), 1.1f / s, 0.7f, 0.6f)
         c.restore()
 
@@ -228,6 +311,12 @@ object Draw {
             EK.WEAVER -> Shapes.weaver
             EK.CHARGER -> Shapes.charger
             EK.TURRET -> Shapes.turret
+            EK.LANCER -> Shapes.lancer
+            EK.ORBITER -> Shapes.orbiter
+            EK.SPLITTER -> Shapes.splitter
+            EK.MINELAYER -> Shapes.minelayer
+            EK.SWARMER -> Shapes.swarmer
+            EK.MINE -> Shapes.mine
             else -> Shapes.boss
         }
         Neon.fillPath(c, shape, fade(col, 0.24f))
@@ -243,10 +332,26 @@ object Draw {
         }
         c.restore()
 
+        if (e.elite) {
+            Neon.ring(c, e.x, e.y, s * 1.5f, fade(Palette.WHITE, 0.35f + 0.2f * sin(timeNow * 4f)), 1.4f, 0.8f)
+        }
         if (e.kind == EK.CHARGER && e.state == 1) {
             // telegraph: locked-on glow before the dive
             Neon.ring(c, e.x, e.y, s * (1.7f + 0.3f * sin(timeNow * 20f)), fade(Palette.RED, 0.5f), 1.6f, 0.9f)
         }
+        if (e.kind == EK.MINE) {
+            val pulse = 0.45f + 0.55f * sin(timeNow * 7f + e.seedPhase())
+            Neon.ring(c, e.x, e.y, s * (1.4f + 0.25f * pulse), fade(Palette.RED, 0.4f * pulse), 1.4f, 0.8f)
+        }
+    }
+
+    /** The wind-up beam a lancer shows before it fires. */
+    fun lancerTelegraph(c: Canvas, e: Enemy, screenH: Float) {
+        if (e.telegraph <= 0f) return
+        val t = clamp(e.telegraph, 0f, 1f)
+        val w = 2f + 10f * t
+        Neon.fillRect(c, e.x - w, e.y, e.x + w, screenH, fade(Palette.RED, 0.10f + 0.22f * t))
+        Neon.line(c, e.x, e.y, e.x, screenH, fade(Palette.RED, 0.5f + 0.4f * t), 1.4f, 0.7f)
     }
 
     fun bullet(c: Canvas, b: Bullet) {

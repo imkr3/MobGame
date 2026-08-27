@@ -18,12 +18,12 @@ private class Spawn(
  * The simulation: player, bullets, enemies, pickups, the wave director and scoring.
  * Rendering of these objects lives here too so the draw order stays obvious.
  */
-class World(private val fx: Fx, private val haptics: Haptics) {
+class World(internal val fx: Fx, private val haptics: Haptics) {
 
     companion object {
         const val ENEMY_CAP = 56
         const val GRAZE_R = 26f
-        const val OD_DURATION = 4.5f
+        const val OD_DURATION = 3.2f
         const val COMBO_WINDOW = 3.2f
         const val MAX_WEAPON = 5
     }
@@ -35,6 +35,10 @@ class World(private val fx: Fx, private val haptics: Haptics) {
 
     val player = Player()
     val loadout = Loadout()
+    /** The hull chosen in the hangar; set before [reset]. */
+    var ship: Ship = ShipDex.byId(ShipDex.STARTER)
+    /** Optional sound sink; null in headless tests. */
+    var sound: SoundBus? = null
     val arsenal = Arsenal(fx)
     internal val bullets = Array(620) { Bullet() }
     private var bIdx = 0
@@ -65,18 +69,21 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         private set
 
     var banner: String = ""
-        private set
+        internal set
     var bannerSub: String = ""
-        private set
+        internal set
     var bannerT = 0f
-        private set
+        internal set
 
     private var time = 0f
     private var waveClearT = 0f
+    private var augmentDelay = 0f
     private var awaitingNextWave = false
     private var boss: Enemy? = null
     var bossHpRatio = 0f
-        private set
+        internal set
+
+    private fun scoreMultiplier(): Float = loadout.scoreMul() * ship.scoreMul
 
     val multiplier: Float
         get() = clamp(1f + combo * 0.1f, 1f, 9.9f)
@@ -113,11 +120,15 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         boss = null; bossHpRatio = 0f
         awaitingNextWave = true
         waveClearT = 0.9f
+        augmentDelay = 0f
         time = 0f
         banner = ""; bannerSub = ""; bannerT = 0f
-        player.lives = 3
+        player.shipId = ship.id
+        player.lives = ship.lives
+        player.hitR = ship.hitR
         player.weapon = 1
-        player.shield = 0
+        player.shield = ship.startShield
+        if (ship.signature >= 0) loadout.lvl[ship.signature] = ship.signatureLevel
         player.invuln = 2f
         player.overdrive = 0f
         player.odTime = 0f
@@ -156,6 +167,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         fx.shake(0.5f)
         fx.freeze(0.09f)
         fx.burst(player.x, player.y, 46, Palette.AMBER, 460f, 3.4f, 0.7f, true)
+        sound?.sfx(Sfx.OVERDRIVE)
         if (gained > 0) fx.popText(player.x, player.y - 70f, "+$gained", Palette.AMBER, 24f, 1.1f)
         haptics.heavy()
         return true
@@ -167,7 +179,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
     fun applyAugment(c: AugCard) {
         val label = loadout.apply(c)
         when (c.id) {
-            Aug.REPAIR -> player.lives = (player.lives + 1).coerceAtMost(7)
+            Aug.REPAIR -> player.lives = (player.lives + 1).coerceAtMost(5)
             Aug.ARMOR -> player.shield = (player.shield + 1).coerceAtMost(loadout.maxShield())
         }
         pendingAugment = false
@@ -177,6 +189,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         fx.shockwave(player.x, player.y, 190f, c.color, 0.7f, 4f)
         fx.burst(player.x, player.y, 30, c.color, 300f, 2.8f, 0.8f, true)
         fx.flash(c.color, 0.3f)
+        sound?.sfx(Sfx.POWERUP)
         haptics.medium()
     }
 
@@ -246,7 +259,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
                 fx.burst(b.x, b.y, 3, Palette.AMBER, 150f, 1.8f, 0.3f)
             }
         }
-        if (payout > 0) score += (payout * loadout.scoreMul()).toInt()
+        if (payout > 0) score += (payout * scoreMultiplier()).toInt()
     }
 
     /** REPULSOR shoves incoming fire back out of the field. */
@@ -310,19 +323,81 @@ class World(private val fx: Fx, private val haptics: Haptics) {
                 e.score = 300; e.color = Palette.AMBER
                 e.dropBias = 2.2f
             }
+            EK.LANCER -> {
+                e.r = 18f; e.hp = 9f * hpMul; e.vy = 92f * speedMul
+                e.holdY = rnd(h * 0.12f, h * 0.26f)
+                e.vx = if (chance(0.5f)) 46f else -46f
+                e.fireEvery = 2.7f * rateMul; e.fireT = rnd(1f, 2f)
+                e.score = 260; e.color = Palette.RED
+                e.dropBias = 1.6f
+            }
+            EK.ORBITER -> {
+                e.r = 15f; e.hp = 5f * hpMul; e.vy = 118f * speedMul
+                e.holdY = rnd(h * 0.16f, h * 0.34f)
+                e.amp = rnd(62f, 104f); e.freq = rnd(0.8f, 1.3f)
+                e.seed = rnd(TAU)
+                e.fireEvery = 1.5f * rateMul; e.fireT = rnd(0.4f, 1.2f)
+                e.score = 190; e.color = Palette.VIOLET
+            }
+            EK.SPLITTER -> {
+                e.r = 20f; e.hp = 11f * hpMul; e.vy = 72f * speedMul
+                e.vx = rnd(-38f, 38f)
+                e.fireEvery = 2.5f * rateMul; e.fireT = rnd(0.8f, 2f)
+                e.score = 220; e.color = Palette.LIME
+                e.dropBias = 1.4f
+            }
+            EK.MINELAYER -> {
+                e.r = 20f; e.hp = 13f * hpMul; e.vy = 82f * speedMul
+                e.holdY = rnd(h * 0.10f, h * 0.20f)
+                e.vx = if (chance(0.5f)) 96f else -96f
+                e.fireEvery = 1.35f * rateMul; e.fireT = 0.7f
+                e.score = 320; e.color = Palette.AMBER
+                e.dropBias = 2.0f
+            }
+            EK.SWARMER -> {
+                e.r = 9f; e.hp = 2f * hpMul; e.vy = 210f * speedMul
+                e.stateT = rnd(0.2f, 0.45f)
+                e.score = 70; e.color = Palette.ROSE
+                e.dropBias = 0.35f
+            }
+            EK.MINE -> {
+                e.r = 11f; e.hp = 2f; e.vy = 20f
+                e.stateT = 9f
+                e.score = 60; e.color = Palette.RED
+                e.dropBias = 0.2f
+            }
             EK.BOSS -> {
-                e.r = 52f
-                e.hp = 210f + wave * 82f
+                val sector = Sectors.forWave(wave)
+                e.bossType = sector.boss
+                val typeMul = when (sector.boss) {
+                    BT.WARDEN -> 0.92f
+                    BT.HIVE -> 0.95f
+                    BT.FORGE -> 1.3f
+                    BT.NULLIFIER -> 1.15f
+                    else -> 1f
+                }
+                e.r = if (sector.boss == BT.FORGE) 58f else 52f
+                e.hp = (165f + wave * 55f) * typeMul * (1f + Sectors.tier(wave) * 0.5f)
                 e.vy = 90f
                 e.holdY = h * 0.20f
                 e.fireEvery = 1f
                 e.score = 3000 + wave * 600
-                e.color = Palette.MAGENTA
+                e.color = sector.accent
                 e.amp = w * 0.26f
                 e.freq = 0.55f
                 e.dropBias = 6f
                 boss = e
             }
+        }
+
+        // Elites appear once the run is deep enough: tougher, worth more.
+        if (kind != EK.BOSS && kind != EK.MINE && wave >= 7 && chance(clamp(0.05f + wave * 0.008f, 0f, 0.28f))) {
+            e.elite = true
+            e.hp *= 1.6f
+            e.r *= 1.12f
+            e.score = (e.score * 2.2f).toInt()
+            e.dropBias *= 1.8f
+            e.fireEvery *= 0.8f
         }
         e.maxHp = e.hp
         return e
@@ -338,48 +413,93 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         script.clear()
         scriptIdx = 0
         waveT = 0f
-        val hpMul = 1f + (n - 1) * 0.3f
+        val sector = Sectors.forWave(n)
+        val tier = Sectors.tier(n)
+        val hpMul = 1f + (n - 1) * 0.32f + tier * 0.8f
 
-        if (n % 5 == 0) {
-            script.add(Spawn(1.6f, EK.BOSS, w * 0.5f, -110f, hpMul))
+        if (Sectors.isBossWave(n)) {
+            script.add(Spawn(1.9f, EK.BOSS, w * 0.5f, -110f, hpMul))
             return
         }
 
         var t = 0.4f
-        val groups = 2 + (n / 2).coerceAtMost(4)
+        val waveInSector = (n - 1) % Sectors.WAVES_PER_SECTOR
+        val groups = 3 + waveInSector.coerceAtMost(2) + tier
         for (g in 0 until groups) {
-            when ((if (g == 0) 0 else Math.floorMod(g + n, 4))) {
-                0 -> { // descending arc of drifters
-                    val count = 5 + (n / 3).coerceAtMost(4)
-                    for (i in 0 until count) {
-                        val fx0 = (i + 0.5f) / count
-                        addSpawn(t + i * 0.13f, EK.DRIFTER, w * (0.12f + 0.76f * fx0), hpMul)
-                    }
-                    t += 2.6f
+            val kind = sector.roster[(g + n) % sector.roster.size]
+            t += addGroup(kind, t, n, hpMul)
+        }
+    }
+
+    /** Lays down one formation of [kind] and returns how long it occupies the timeline. */
+    private fun addGroup(kind: Int, t: Float, n: Int, hpMul: Float): Float {
+        val scale = 1 + n / 6
+        when (kind) {
+            EK.DRIFTER -> {
+                val count = (5 + scale).coerceAtMost(9)
+                for (i in 0 until count) {
+                    val f = (i + 0.5f) / count
+                    addSpawn(t + i * 0.12f, EK.DRIFTER, w * (0.12f + 0.76f * f), hpMul)
                 }
-                1 -> { // two weaver streams from the sides
-                    val count = 4 + (n / 4).coerceAtMost(3)
-                    for (i in 0 until count) {
-                        addSpawn(t + i * 0.28f, EK.WEAVER, w * 0.22f, hpMul)
-                        addSpawn(t + 0.14f + i * 0.28f, EK.WEAVER, w * 0.78f, hpMul)
-                    }
-                    t += 2.9f
-                }
-                2 -> { // turret emplacements
-                    val count = 1 + (n / 4).coerceAtMost(2)
-                    for (i in 0 until count) {
-                        addSpawn(t + i * 0.9f, EK.TURRET, w * rnd(0.22f, 0.78f), hpMul)
-                    }
-                    t += 3.4f
-                }
-                else -> { // charger ambush
-                    val count = 2 + (n / 3).coerceAtMost(3)
-                    for (i in 0 until count) {
-                        addSpawn(t + i * 0.45f, EK.CHARGER, w * rnd(0.18f, 0.82f), hpMul)
-                    }
-                    t += 3.0f
-                }
+                return 2.4f
             }
+            EK.WEAVER -> {
+                val count = (4 + scale / 2).coerceAtMost(7)
+                for (i in 0 until count) {
+                    addSpawn(t + i * 0.26f, EK.WEAVER, w * 0.22f, hpMul)
+                    addSpawn(t + 0.13f + i * 0.26f, EK.WEAVER, w * 0.78f, hpMul)
+                }
+                return 2.7f
+            }
+            EK.CHARGER -> {
+                val count = (2 + scale).coerceAtMost(6)
+                for (i in 0 until count) {
+                    addSpawn(t + i * 0.4f, EK.CHARGER, w * rnd(0.18f, 0.82f), hpMul)
+                }
+                return 2.8f
+            }
+            EK.TURRET -> {
+                val count = (1 + scale / 2).coerceAtMost(3)
+                for (i in 0 until count) {
+                    addSpawn(t + i * 0.8f, EK.TURRET, w * rnd(0.22f, 0.78f), hpMul)
+                }
+                return 3.2f
+            }
+            EK.LANCER -> {
+                val count = (1 + scale / 3).coerceAtMost(3)
+                for (i in 0 until count) {
+                    addSpawn(t + i * 0.7f, EK.LANCER, w * (0.25f + 0.5f * i / count.coerceAtLeast(1)), hpMul)
+                }
+                return 3.4f
+            }
+            EK.ORBITER -> {
+                val count = (2 + scale / 2).coerceAtMost(5)
+                val cx = w * rnd(0.3f, 0.7f)
+                for (i in 0 until count) {
+                    addSpawn(t + i * 0.3f, EK.ORBITER, cx, hpMul)
+                }
+                return 2.9f
+            }
+            EK.SPLITTER -> {
+                val count = (2 + scale / 3).coerceAtMost(4)
+                for (i in 0 until count) {
+                    addSpawn(t + i * 0.65f, EK.SPLITTER, w * rnd(0.2f, 0.8f), hpMul)
+                }
+                return 3.3f
+            }
+            EK.MINELAYER -> {
+                addSpawn(t, EK.MINELAYER, w * rnd(0.25f, 0.75f), hpMul)
+                if (n > 12) addSpawn(t + 1.4f, EK.MINELAYER, w * rnd(0.25f, 0.75f), hpMul)
+                return 3.6f
+            }
+            EK.SWARMER -> {
+                val count = (6 + scale * 2).coerceAtMost(14)
+                for (i in 0 until count) {
+                    addSpawn(t + i * 0.1f, EK.SWARMER, w * rnd(0.12f, 0.88f), hpMul)
+                }
+                return 2.6f
+            }
+            else -> return 1.5f
         }
     }
 
@@ -387,16 +507,28 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         wave = n
         buildWave(n)
         awaitingNextWave = false
-        if (n % 5 == 0) {
-            banner = "WARNING"
-            bannerSub = "SECTOR GUARDIAN"
-            bannerT = 2.2f
-            fx.flash(Palette.RED, 0.3f)
-            haptics.medium()
-        } else {
-            banner = "WAVE $n"
-            bannerSub = if (n == 1) "DRAG TO FLY" else ""
-            bannerT = 1.8f
+        val sector = Sectors.forWave(n)
+        when {
+            Sectors.isBossWave(n) -> {
+                banner = "WARNING"
+                bannerSub = sector.bossName
+                bannerT = 2.4f
+                fx.flash(Palette.RED, 0.3f)
+                sound?.sfx(Sfx.WARN)
+                haptics.medium()
+            }
+            Sectors.isSectorStart(n) -> {
+                banner = sector.name
+                bannerSub = sector.subtitle
+                bannerT = 2.4f
+                fx.flash(sector.accent, 0.22f)
+                haptics.light()
+            }
+            else -> {
+                banner = "WAVE $n"
+                bannerSub = if (n == 1) "DRAG TO FLY" else ""
+                bannerT = 1.8f
+            }
         }
     }
 
@@ -428,6 +560,12 @@ class World(private val fx: Fx, private val haptics: Haptics) {
 
     private fun updateWaveDirector(dt: Float) {
         if (awaitingNextWave) {
+            // let the WAVE CLEAR banner land before the cards take over
+            if (augmentDelay > 0f) {
+                augmentDelay -= dt
+                if (augmentDelay <= 0f) pendingAugment = true
+                return
+            }
             if (pendingAugment) return
             waveClearT -= dt
             if (waveClearT <= 0f) startWave(wave + 1)
@@ -440,14 +578,15 @@ class World(private val fx: Fx, private val haptics: Haptics) {
             scriptIdx++
         }
         if (scriptIdx >= script.size && activeEnemies() == 0 && !gameOver) {
-            val bonus = ((400 * wave + player.lives * 150) * loadout.scoreMul()).toInt()
+            val bonus = ((400 * wave + player.lives * 150) * scoreMultiplier()).toInt()
             score += bonus
             banner = "WAVE $wave CLEAR"
-            bannerSub = "+$bonus"
-            bannerT = 1.6f
+            bannerSub = "+$bonus   -   UPGRADE READY"
+            bannerT = 1.9f
+            sound?.sfx(Sfx.WAVE_CLEAR)
             awaitingNextWave = true
-            waveClearT = 1.5f
-            pendingAugment = true
+            waveClearT = 1.4f
+            augmentDelay = 1.15f
             boss = null
             bossHpRatio = 0f
         }
@@ -458,7 +597,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
             player.respawnT -= dt
             if (player.respawnT <= 0f) {
                 player.alive = true
-                player.invuln = 2.4f
+                player.invuln = 1.5f
                 centerPlayer()
                 fx.shockwave(player.x, player.y, 90f, Palette.CYAN, 0.5f, 2.5f)
             }
@@ -466,7 +605,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         }
 
         val px = player.x
-        val handling = loadout.handling()
+        val handling = clamp(loadout.handling() * ship.handlingMul, 0.3f, 0.86f)
         player.x = approach(player.x, player.tx, handling, dt)
         player.y = approach(player.y, player.ty, handling, dt)
         val vx = (player.x - px) / dt.coerceAtLeast(0.0001f)
@@ -495,7 +634,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
             var base = when (player.weapon) {
                 1 -> 0.155f; 2 -> 0.145f; 3 -> 0.135f; 4 -> 0.125f; else -> 0.115f
             }
-            base *= loadout.fireIntervalMul()
+            base *= loadout.fireIntervalMul() * ship.fireMul
             if (loadout.branch[Aug.SPREAD] == Aug.A) base *= 0.82f
             player.fireT = base * (if (player.odTime > 0f) 0.55f else 1f)
         }
@@ -511,7 +650,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
 
     private fun playerFire() {
         val od = player.odTime > 0f
-        val d = (if (od) 4 else 2) + loadout.damageBonus()
+        val d = (if (od) 4 else 2) + loadout.damageBonus() + ship.damageBonus
         when (player.weapon) {
             1 -> playerShot(0f, -14f, 0f, 4.4f, d)
             2 -> { playerShot(-7f, -12f, 0f, 4f, d); playerShot(7f, -12f, 0f, 4f, d) }
@@ -531,6 +670,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
             playerShot(17f, -4f, 34f, 3.6f, d)
         }
         spreadFire(d)
+        sound?.sfx(Sfx.SHOOT)
         fx.cone(player.x, player.y - 14f, 2, -TAU * 0.25f, 0.5f, if (od) Palette.AMBER else Palette.CYAN, 190f, 1.9f, 0.14f)
     }
 
@@ -601,7 +741,32 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         }
     }
 
-    private fun enemyShotSpeed(): Float = clamp(170f + wave * 8f, 170f, 330f)
+    internal fun enemyBulletSpeed(): Float =
+        clamp(205f + wave * 9f + Sectors.tier(wave) * 40f, 205f, 445f)
+
+    /** Fire an enemy bullet. Used by [EnemyAI] and [BossAI]. */
+    internal fun hostileShot(x: Float, y: Float, angle: Float, speed: Float, r: Float, color: Int, style: Int): Bullet =
+        fireAngle(x, y, angle, speed, r, 1, true, color, style)
+
+    internal fun setBossHp(v: Float) {
+        bossHpRatio = v
+    }
+
+    internal fun setBanner(main: String, sub: String, time: Float) {
+        banner = main
+        bannerSub = sub
+        bannerT = time
+    }
+
+    internal fun clearHostileFire() {
+        clearHostileBullets(false)
+    }
+
+    /** Spawn a support enemy mid-wave (mines, broods, summoned wings). */
+    internal fun countActive(kind: Int): Int = enemies.count { it.active && it.kind == kind }
+
+    internal fun spawnMinion(kind: Int, x: Float, y: Float): Enemy? =
+        spawnEnemy(kind, x, y, 1f + (wave - 1) * 0.3f)
 
     private fun updateEnemies(dt: Float) {
         for (e in enemies) {
@@ -609,223 +774,12 @@ class World(private val fx: Fx, private val haptics: Haptics) {
             e.t += dt
             if (e.hitFlash > 0f) e.hitFlash -= dt
 
-            when (e.kind) {
-                EK.DRIFTER -> updateDrifter(e, dt)
-                EK.WEAVER -> updateWeaver(e, dt)
-                EK.CHARGER -> updateCharger(e, dt)
-                EK.TURRET -> updateTurret(e, dt)
-                EK.BOSS -> updateBoss(e, dt)
-            }
+            if (e.telegraph > 0f && e.kind != EK.LANCER) e.telegraph = 0f
+            EnemyAI.update(this, e, dt)
 
-            if (e.kind != EK.BOSS && (e.y > h + 80f || e.x < -140f || e.x > w + 140f)) {
+            if (e.kind != EK.BOSS && (e.y > h + 90f || e.x < -160f || e.x > w + 160f || e.y < -260f)) {
                 e.active = false
             }
-        }
-    }
-
-    private fun aimedShot(e: Enemy, spreadDeg: Float = 0f, speedMul: Float = 1f, style: Int = 0, r: Float = 5.5f) {
-        if (!player.alive) return
-        val a = Draw.aimAngle(e.x, e.y, player.x, player.y) + spreadDeg * DEG
-        fireAngle(e.x, e.y, a, enemyShotSpeed() * speedMul, r, 1, true, Palette.ROSE, style)
-    }
-
-    private fun updateDrifter(e: Enemy, dt: Float) {
-        e.y += e.vy * dt
-        e.x += sin(e.t * 0.8f) * 22f * dt
-        e.fireT -= dt
-        if (e.fireT <= 0f && e.y > 40f && e.y < h * 0.75f) {
-            aimedShot(e)
-            e.fireT = e.fireEvery
-            fx.cone(e.x, e.y + e.r * 0.6f, 3, TAU * 0.25f, 0.4f, Palette.ROSE, 90f, 1.6f, 0.2f)
-        }
-    }
-
-    private fun updateWeaver(e: Enemy, dt: Float) {
-        e.y += e.vy * dt
-        e.x = e.baseX + sin(e.t * e.freq) * e.amp
-        e.angle = sin(e.t * e.freq) * 16f
-        e.fireT -= dt
-        if (e.fireT <= 0f && e.y > 40f && e.y < h * 0.75f) {
-            aimedShot(e, -9f)
-            aimedShot(e, 9f)
-            e.fireT = e.fireEvery
-        }
-    }
-
-    private fun updateCharger(e: Enemy, dt: Float) {
-        when (e.state) {
-            0 -> {
-                e.y += e.vy * dt
-                if (e.y >= e.holdY) { e.state = 1; e.stateT = 0.75f }
-            }
-            1 -> {
-                e.stateT -= dt
-                e.y += 8f * dt
-                if (e.stateT <= 0f) {
-                    val a = Draw.aimAngle(e.x, e.y, player.x, player.y)
-                    val sp = 430f
-                    e.vx = cos(a) * sp
-                    e.vy = sin(a) * sp
-                    e.angle = a / DEG - 90f
-                    e.state = 2
-                    fx.cone(e.x, e.y, 10, a, 0.5f, Palette.RED, 220f, 2.4f, 0.3f)
-                    haptics.light()
-                }
-            }
-            else -> {
-                e.x += e.vx * dt
-                e.y += e.vy * dt
-                if (chance(0.6f)) {
-                    fx.cone(e.x, e.y, 1, atan2(-e.vy, -e.vx), 0.3f, Palette.RED, 90f, 2f, 0.3f)
-                }
-            }
-        }
-    }
-
-    private fun updateTurret(e: Enemy, dt: Float) {
-        if (e.state == 0) {
-            e.y += e.vy * dt
-            if (e.y >= e.holdY) { e.state = 1; e.stateT = 16f }
-        } else if (e.state == 2) {
-            // deployment expired: sink off the bottom so a wave can always end
-            e.y += e.vy * 1.6f * dt
-            e.angle += 40f * dt
-        } else {
-            e.stateT -= dt
-            if (e.stateT <= 0f) { e.state = 2; return }
-            e.x = e.baseX + sin(e.t * e.freq) * e.amp
-            e.y += sin(e.t * 0.7f) * 6f * dt
-            e.angle += 26f * dt
-            e.fireT -= dt
-            if (e.fireT <= 0f) {
-                val n = 8
-                val off = e.t * 0.7f
-                for (i in 0 until n) {
-                    fireAngle(e.x, e.y, off + i * TAU / n, enemyShotSpeed() * 0.75f, 5f, 1, true, Palette.AMBER, 0)
-                }
-                fx.shockwave(e.x, e.y, e.r * 2.4f, Palette.AMBER, 0.35f, 2f)
-                e.fireT = e.fireEvery
-            }
-        }
-    }
-
-    private fun updateBoss(e: Enemy, dt: Float) {
-        bossHpRatio = clamp(e.hp / e.maxHp, 0f, 1f)
-        val ratio = bossHpRatio
-        val wantPhase = when {
-            ratio > 0.66f -> 0
-            ratio > 0.33f -> 1
-            else -> 2
-        }
-        if (wantPhase != e.phase && e.state != 0) {
-            e.phase = wantPhase
-            e.state = 3           // phase transition: vulnerable, no fire
-            e.stateT = 1.3f
-            clearHostileBullets(false)
-            fx.shockwave(e.x, e.y, w * 1.1f, Palette.RED, 0.7f, 5f)
-            fx.flash(Palette.RED, 0.35f)
-            fx.shake(0.45f)
-            fx.burst(e.x, e.y, 40, Palette.RED, 320f, 3f, 0.7f, true)
-            haptics.medium()
-            banner = "PHASE ${e.phase + 1}"
-            bannerSub = ""
-            bannerT = 1.1f
-            return
-        }
-
-        when (e.state) {
-            0 -> { // entry
-                e.y += e.vy * dt
-                if (e.y >= e.holdY) { e.y = e.holdY; e.state = 1; e.patternT = 1.2f }
-            }
-            3 -> { // between phases
-                e.stateT -= dt
-                e.x = lerp(e.x, w * 0.5f, clamp(dt * 2.2f, 0f, 1f))
-                if (chance(0.6f)) fx.burst(e.x + rnd(-e.r, e.r), e.y + rnd(-e.r * 0.6f, e.r * 0.6f), 2, Palette.AMBER, 120f, 2.4f, 0.5f)
-                if (e.stateT <= 0f) { e.state = 1; e.patternT = 0.6f }
-            }
-            else -> {
-                // hover
-                val sway = sin(e.t * e.freq) * e.amp
-                e.x = w * 0.5f + sway
-                e.y = e.holdY + sin(e.t * 0.9f) * 14f
-                e.angle = -sin(e.t * e.freq) * 7f
-                e.patternT -= dt
-                e.spiral += dt
-                when (e.phase) {
-                    0 -> bossPhase0(e, dt)
-                    1 -> bossPhase1(e, dt)
-                    else -> bossPhase2(e, dt)
-                }
-            }
-        }
-    }
-
-    private fun bossPods(e: Enemy, fn: (Float, Float) -> Unit) {
-        val a = e.angle * DEG
-        val dx = cos(a) * e.r * 1.25f
-        val dy = sin(a) * e.r * 1.25f
-        fn(e.x - dx, e.y + 6f - dy)
-        fn(e.x + dx, e.y + 6f + dy)
-    }
-
-    private fun bossPhase0(e: Enemy, dt: Float) {
-        if (e.patternT <= 0f) {
-            bossPods(e) { px, py ->
-                val a = Draw.aimAngle(px, py, player.x, player.y)
-                for (i in -1..1) {
-                    fireAngle(px, py, a + i * 11f * DEG, enemyShotSpeed() * 0.95f, 5.5f, 1, true, Palette.ROSE, 0)
-                }
-            }
-            fx.shake(0.08f)
-            e.patternT = 1.45f
-        }
-        if (e.spiral > 0.24f) {
-            e.spiral = 0f
-            val sweep = sin(e.t * 1.1f) * 55f * DEG
-            bossPods(e) { px, py ->
-                fireAngle(px, py, TAU * 0.25f + sweep, enemyShotSpeed() * 0.8f, 4.6f, 1, true, Palette.MAGENTA, 0)
-            }
-        }
-    }
-
-    private fun bossPhase1(e: Enemy, dt: Float) {
-        if (e.patternT <= 0f) {
-            val n = 20
-            val off = rnd(TAU)
-            for (i in 0 until n) {
-                fireAngle(e.x, e.y, off + i * TAU / n, enemyShotSpeed() * 0.72f, 5f, 1, true, Palette.MAGENTA, 0)
-            }
-            fx.shockwave(e.x, e.y, e.r * 3f, Palette.MAGENTA, 0.4f, 3f)
-            fx.shake(0.18f)
-            e.patternT = 2.1f
-        }
-        if (e.spiral > 0.85f) {
-            e.spiral = 0f
-            val a = Draw.aimAngle(e.x, e.y, player.x, player.y)
-            for (i in -2..2) {
-                fireAngle(e.x, e.y + e.r * 0.5f, a + i * 9f * DEG, enemyShotSpeed() * 1.05f, 5.5f, 1, true, Palette.ROSE, 0)
-            }
-        }
-    }
-
-    private fun bossPhase2(e: Enemy, dt: Float) {
-        // relentless spiral plus heavy aimed shells
-        if (e.spiral > 0.085f) {
-            e.spiral = 0f
-            e.stateT += 15f * DEG
-            for (i in 0 until 2) {
-                fireAngle(e.x, e.y, e.stateT + i * TAU / 2f, enemyShotSpeed() * 0.66f, 4.8f, 1, true, Palette.VIOLET, 0)
-            }
-        }
-        if (e.patternT <= 0f) {
-            val a = Draw.aimAngle(e.x, e.y, player.x, player.y)
-            fireAngle(e.x, e.y, a, enemyShotSpeed() * 1.15f, 9f, 1, true, Palette.RED, 2)
-            for (i in -1..1) {
-                if (i != 0) fireAngle(e.x, e.y, a + i * 15f * DEG, enemyShotSpeed() * 0.9f, 5.5f, 1, true, Palette.ROSE, 0)
-            }
-            fx.shake(0.12f)
-            e.patternT = 1.6f
         }
     }
 
@@ -840,7 +794,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
                 val dx = player.x - u.x
                 val dy = player.y - u.y
                 val d = len(dx, dy)
-                val magnet = loadout.magnetRadius()
+                val magnet = loadout.magnetRadius() * ship.magnetMul
                 if (d < magnet && d > 0.001f) {
                     val pull = (1f - d / magnet) * 620f
                     u.vx += dx / d * pull * dt
@@ -854,14 +808,14 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         }
     }
 
-    private fun dropLoot(x: Float, y: Float, bias: Float) {
+    private fun dropLoot(x: Float, y: Float, bias: Float, fromTough: Boolean = false) {
         val roll = rnd(1f)
         val starving = player.weapon < MAX_WEAPON && killsSinceWeapon >= 14
         val kind = when {
             starving -> PK.WEAPON
             roll < 0.085f * bias -> PK.WEAPON
             roll < 0.13f * bias -> PK.SHIELD
-            roll < 0.145f * bias -> PK.LIFE
+            fromTough && roll < 0.13f * bias -> PK.LIFE
             roll < 0.42f -> PK.GEM
             else -> return
         }
@@ -887,6 +841,11 @@ class World(private val fx: Fx, private val haptics: Haptics) {
                 val dy = e.y - b.y
                 val rr = e.r + b.r
                 if (dx * dx + dy * dy <= rr * rr) {
+                    if (e.kind == EK.BOSS && BossAI.blocksHit(e, b.x, b.y)) {
+                        b.active = false
+                        fx.burst(b.x, b.y, 4, Palette.AMBER, 190f, 2f, 0.28f)
+                        break
+                    }
                     if (b.splash > 0f) detonate(b)
                     hit(e, b.damage.toFloat(), b.x, b.y, true)
                     if (b.pierce > 0) {
@@ -915,8 +874,8 @@ class World(private val fx: Fx, private val haptics: Haptics) {
                     fx.burst(b.x, b.y, 4, Palette.AMBER, 150f, 2f, 0.3f)
                 } else if (!b.grazed && d2 <= GRAZE_R * GRAZE_R) {
                     b.grazed = true
-                    player.overdrive = clamp(player.overdrive + loadout.grazeCharge(), 0f, 1f)
-                    score += (15 * loadout.scoreMul()).toInt()
+                    player.overdrive = clamp(player.overdrive + loadout.grazeCharge() * ship.grazeMul, 0f, 1f)
+                    score += (15 * scoreMultiplier()).toInt()
                     fx.cone(b.x, b.y, 2, atan2(-dy, -dx), 0.8f, Palette.CYAN, 140f, 1.6f, 0.25f)
                 }
             }
@@ -968,17 +927,18 @@ class World(private val fx: Fx, private val haptics: Haptics) {
                 fx.shockwave(player.x, player.y, 70f, Palette.LIME, 0.4f, 2.5f)
             }
             PK.LIFE -> {
-                player.lives = (player.lives + 1).coerceAtMost(5)
+                player.lives = (player.lives + 1).coerceAtMost(4)
                 fx.popText(player.x, player.y - 46f, "1UP", Palette.ROSE, 24f)
                 fx.flash(Palette.ROSE, 0.25f)
             }
             else -> {
-                val v = (200 * multiplier * loadout.scoreMul()).toInt()
+                val v = (200 * multiplier * scoreMultiplier()).toInt()
                 score += v
                 fx.popText(u.x, u.y, "+$v", Palette.AMBER, 16f, 0.7f)
             }
         }
         fx.burst(u.x, u.y, 10, Palette.WHITE, 190f, 2f, 0.4f)
+        sound?.sfx(if (u.kind == PK.GEM) Sfx.PICKUP else Sfx.POWERUP)
         haptics.light()
     }
 
@@ -1010,9 +970,9 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         combo++
         comboT = COMBO_WINDOW
         if (combo > maxCombo) maxCombo = combo
-        player.overdrive = clamp(player.overdrive + 0.012f, 0f, 1f)
+        player.overdrive = clamp(player.overdrive + 0.005f, 0f, 1f)
 
-        val gained = (e.score * multiplier * loadout.scoreMul()).toInt()
+        val gained = (e.score * multiplier * scoreMultiplier()).toInt()
         score += gained
 
         if (e.kind == EK.BOSS) {
@@ -1028,20 +988,43 @@ class World(private val fx: Fx, private val haptics: Haptics) {
             fx.shockwave(e.x, e.y, w * 1.1f, Palette.MAGENTA, 0.7f, 4f)
             fx.popText(e.x, e.y - 30f, "+$gained", Palette.WHITE, 30f, 1.6f)
             haptics.heavy()
-            for (i in 0 until 4) dropLoot(e.x + rnd(-50f, 50f), e.y + rnd(-20f, 20f), 9f)
+            sound?.sfx(Sfx.BIG_EXPLODE)
+            for (i in 0 until 4) dropLoot(e.x + rnd(-50f, 50f), e.y + rnd(-20f, 20f), 9f, true)
             clearHostileBullets(true)
         } else {
+            if (e.kind == EK.MINE) EnemyAI.detonateMine(this, e)
+            if (e.kind == EK.SPLITTER && e.tier < 2) splitInto(e)
             fx.burst(e.x, e.y, 16, e.color, 300f, 2.8f, 0.55f, true)
             fx.burst(e.x, e.y, 8, Palette.WHITE, 180f, 2.2f, 0.35f)
             fx.shockwave(e.x, e.y, e.r * 3.2f, e.color, 0.32f, 2.4f)
             fx.shake(0.07f)
             fx.popText(e.x, e.y - 12f, "+$gained", if (combo > 8) Palette.AMBER else Palette.WHITE, 15f, 0.6f)
+            sound?.sfx(Sfx.EXPLODE)
             if (combo > 0 && combo % 10 == 0) {
                 fx.popText(player.x, player.y - 76f, "COMBO x${combo}", Palette.MAGENTA, 22f, 1.1f)
                 haptics.light()
             }
-            dropLoot(e.x, e.y, e.dropBias)
+            dropLoot(e.x, e.y, e.dropBias, e.elite || e.kind == EK.TURRET || e.kind == EK.MINELAYER)
         }
+    }
+
+    /** A destroyed splitter leaves two faster, smaller halves. */
+    private fun splitInto(parent: Enemy) {
+        for (i in 0 until 2) {
+            val child = spawnEnemy(EK.SPLITTER, parent.x, parent.y, 1f) ?: return
+            child.tier = parent.tier + 1
+            child.hp = parent.maxHp * 0.32f
+            child.maxHp = child.hp
+            child.r = parent.r * 0.62f
+            child.vx = if (i == 0) -105f else 105f
+            child.vy = parent.vy * 1.45f
+            child.score = (parent.score * 0.4f).toInt()
+            child.fireEvery = parent.fireEvery * 0.85f
+            child.fireT = rnd(0.4f, 1f)
+            child.elite = false
+            child.dropBias = 0.4f
+        }
+        fx.shockwave(parent.x, parent.y, parent.r * 2.5f, Palette.LIME, 0.35f, 2.5f)
     }
 
     /** Wipes enemy fire. When [convert] is set each bullet pays out score. Returns the payout. */
@@ -1066,6 +1049,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
             fx.flash(Palette.LIME, 0.22f)
             fx.shake(0.3f)
             fx.popText(player.x, player.y - 50f, "SHIELD DOWN", Palette.LIME, 18f)
+            sound?.sfx(Sfx.HURT)
             haptics.medium()
             return
         }
@@ -1082,6 +1066,7 @@ class World(private val fx: Fx, private val haptics: Haptics) {
         fx.flash(Palette.RED, 0.5f)
         fx.shake(0.85f)
         fx.freeze(0.16f)
+        sound?.sfx(Sfx.HURT)
         haptics.heavy()
         clearHostileBullets(false)
 
@@ -1095,7 +1080,11 @@ class World(private val fx: Fx, private val haptics: Haptics) {
 
     fun draw(c: Canvas) {
         for (u in pickups) if (u.active) Draw.powerUp(c, u)
-        for (e in enemies) if (e.active) Draw.enemy(c, e, time)
+        for (e in enemies) if (e.active && e.kind == EK.LANCER) Draw.lancerTelegraph(c, e, h)
+        for (e in enemies) if (e.active) {
+            Draw.enemy(c, e, time)
+            if (e.kind == EK.BOSS) BossAI.drawArmour(c, e)
+        }
         for (b in bullets) if (b.active && !b.hostile) Draw.bullet(c, b)
         arsenal.draw(c, this)
         Draw.player(c, player, time)

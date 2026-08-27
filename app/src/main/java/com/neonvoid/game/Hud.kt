@@ -54,6 +54,12 @@ class Hud(private val prefs: Prefs) {
     val quit = Button("QUIT", Palette.DIM)
     val retry = Button("FLY AGAIN", Palette.CYAN)
     val toMenu = Button("MAIN MENU", Palette.DIM)
+    val hangar = Button("HANGAR", Palette.AMBER)
+    val music = Button("MUSIC", Palette.VIOLET)
+    val sfx = Button("SFX", Palette.VIOLET)
+    val summon = Button("SUMMON", Palette.AMBER)
+    val back = Button("BACK", Palette.DIM)
+    val shipCells = Array(ShipDex.list.size) { Button("", Palette.DIM) }
 
     /** One offered augment: its card geometry, hit target and pre-wrapped copy. */
     class CardView {
@@ -82,8 +88,27 @@ class Hud(private val prefs: Prefs) {
         bottom = bottomInset + 16f
 
         val cx = w * 0.5f
-        play.place(cx, h * 0.60f, w * 0.62f, 62f)
-        haptic.place(cx, h * 0.60f + 88f, w * 0.52f, 44f)
+        play.place(cx, h * 0.575f, w * 0.62f, 62f)
+        hangar.place(cx, h * 0.575f + 76f, w * 0.52f, 50f)
+        val tw = w * 0.185f
+        music.place(cx - tw - 8f, h * 0.575f + 140f, tw, 40f)
+        sfx.place(cx, h * 0.575f + 140f, tw, 40f)
+        haptic.place(cx + tw + 8f, h * 0.575f + 140f, tw, 40f)
+
+        summon.place(cx, h * 0.795f, w * 0.62f, 56f)
+        back.place(cx, h * 0.875f, w * 0.4f, 46f)
+        val cols = 4
+        val cellW = w * 0.215f
+        val cellH = 86f
+        for (i in shipCells.indices) {
+            val col = i % cols
+            val row = i / cols
+            shipCells[i].place(
+                w * 0.5f + (col - (cols - 1) / 2f) * (cellW + 8f),
+                h * 0.47f + row * (cellH + 10f),
+                cellW, cellH
+            )
+        }
 
         pause.place(w - 34f, top + 22f, 44f, 44f)
         overdrive.place(w - 56f, h - bottom - 62f, 68f, 68f)
@@ -140,8 +165,14 @@ class Hud(private val prefs: Prefs) {
             Neon.label(c, "x" + oneDecimal(m), 20f, top + 92f, 26f * bump, col, Paint.Align.LEFT, 0.9f, 0.04f, Neon.FONT_NUM)
         }
 
-        // wave
+        // wave + where you are + what clearing it buys you
+        val sector = Sectors.forWave(world.wave.coerceAtLeast(1))
         Neon.label(c, "WAVE ${world.wave}", w * 0.5f, top + 26f, 18f, Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.22f)
+        if (!world.bossPresent()) {
+            Neon.label(c, sector.name, w * 0.5f, top + 42f, 11f, fade(sector.accent, 0.8f), Paint.Align.CENTER, 0.4f, 0.3f)
+            val hint = if (world.loadout.slotsFull()) "CLEAR WAVE - UPGRADE EXISTING" else "CLEAR WAVE - NEW UPGRADE"
+            Neon.label(c, hint, w * 0.5f, top + 58f, 10f, fade(Palette.DIM, 0.9f), Paint.Align.CENTER, 0.25f, 0.24f, Neon.FONT_BODY)
+        }
 
         // pause button
         val px = pause.cx
@@ -247,14 +278,23 @@ class Hud(private val prefs: Prefs) {
         Neon.label(c, "VOID", cx, h * 0.42f + 58f, 62f, Palette.CYAN, Paint.Align.CENTER, 1f, 0.32f)
         Neon.label(c, "SURVIVE THE GRID", cx, h * 0.42f + 90f, 15f, Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.4f)
 
-        haptic.label = if (prefs.hapticsOn) "HAPTICS  ON" else "HAPTICS  OFF"
+        haptic.label = if (prefs.hapticsOn) "HAPTIC" else "HAPTIC"
         haptic.color = if (prefs.hapticsOn) Palette.VIOLET else Palette.DIM
+        music.label = "MUSIC"
+        music.color = if (prefs.musicOn) Palette.VIOLET else Palette.DIM
+        sfx.label = "SFX"
+        sfx.color = if (prefs.sfxOn) Palette.VIOLET else Palette.DIM
+        hangar.label = "HANGAR - ${ShipDex.byId(prefs.selectedShip).name}"
         drawButton(c, play, time, true)
+        drawButton(c, hangar, time)
+        drawButton(c, music, time)
+        drawButton(c, sfx, time)
         drawButton(c, haptic, time)
 
-        val statY = h * 0.80f
+        val statY = h * 0.795f
         Neon.label(c, "BEST  ${formatScore(prefs.bestScore)}", cx, statY, 22f, Palette.AMBER, Paint.Align.CENTER, 0.7f, 0.14f, Neon.FONT_NUM)
-        Neon.label(c, "WAVE ${prefs.bestWave}   COMBO x${prefs.bestCombo}   RUNS ${prefs.runs}", cx, statY + 26f, 13f, Palette.DIM, Paint.Align.CENTER, 0.4f, 0.16f)
+        Neon.label(c, "WAVE ${prefs.bestWave}   COMBO x${prefs.bestCombo}   RUNS ${prefs.runs}", cx, statY + 24f, 13f, Palette.DIM, Paint.Align.CENTER, 0.4f, 0.16f)
+        Neon.label(c, "${prefs.cores} CORES", cx, statY + 46f, 15f, Palette.AMBER, Paint.Align.CENTER, 0.6f, 0.2f, Neon.FONT_NUM)
 
         Neon.label(c, "DRAG ANYWHERE TO FLY  -  AUTO FIRE", cx, h - bottom - 40f, 13f, Palette.SKY, Paint.Align.CENTER, 0.5f, 0.2f)
         Neon.label(c, "GRAZE BULLETS TO CHARGE OVERDRIVE", cx, h - bottom - 20f, 13f, Palette.AMBER, Paint.Align.CENTER, 0.5f, 0.2f)
@@ -296,6 +336,107 @@ class Hud(private val prefs: Prefs) {
     private fun statCell(c: Canvas, x: Float, y: Float, label: String, value: String, color: Int) {
         Neon.label(c, value, x, y, 28f, color, Paint.Align.CENTER, 0.8f, 0.04f, Neon.FONT_NUM)
         Neon.label(c, label, x, y + 20f, 12f, Palette.DIM, Paint.Align.CENTER, 0.35f, 0.3f)
+    }
+
+    // -------------------------------------------------------------- hangar
+
+    private val statBuf = ArrayList<String>(8)
+
+    private fun hullIcon(c: Canvas, ship: Ship, x: Float, y: Float, s: Float, alpha: Float) {
+        val path = Hulls.of(ship)
+        c.save()
+        c.translate(x, y)
+        c.scale(s, s)
+        Neon.fillPath(c, path, fade(ship.color, 0.18f * alpha))
+        Neon.path(c, path, fade(ship.color, alpha), 1.7f / s, 0.9f, 0.8f)
+        c.restore()
+    }
+
+    fun drawHangar(c: Canvas, selected: Int, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xF203010A.toInt())
+        val cx = w * 0.5f
+        val ship = ShipDex.byId(selected)
+        val owned = prefs.ownedShips
+
+        Neon.label(c, "HANGAR", cx, h * 0.075f, 34f, Palette.CYAN, Paint.Align.CENTER, 1f, 0.3f)
+        Neon.label(c, "${prefs.cores} CORES", w - 20f, h * 0.075f, 16f, Palette.AMBER, Paint.Align.RIGHT, 0.6f, 0.12f, Neon.FONT_NUM)
+        Neon.label(c, "${ShipDex.ownedCount(owned)}/${ShipDex.list.size} HULLS", 20f, h * 0.075f, 13f, Palette.DIM, Paint.Align.LEFT, 0.3f, 0.16f, Neon.FONT_BODY)
+
+        // selected hull panel
+        val py = h * 0.215f
+        Neon.panel(c, 18f, h * 0.115f, w - 18f, h * 0.40f, 14f, fade(ship.color, 0.07f), fade(ship.color, 0.75f), 1.8f, 0.8f)
+        hullIcon(c, ship, w * 0.24f, py + 6f + sin(time * 1.6f) * 4f, 34f, 1f)
+        Neon.label(c, ship.name, w * 0.44f, py - 22f, 28f, ship.color, Paint.Align.LEFT, 0.9f, 0.1f)
+        Neon.label(c, Rarity.names[ship.rarity], w * 0.44f, py - 2f, 12f, Rarity.colors[ship.rarity], Paint.Align.LEFT, 0.6f, 0.3f)
+
+        ship.statLines(statBuf)
+        var sy = py + 22f
+        var col = 0
+        for (line in statBuf) {
+            val lx = if (col == 0) w * 0.44f else w * 0.72f
+            Neon.label(c, line, lx, sy, 12f, Palette.SKY, Paint.Align.LEFT, 0.3f, 0.06f, Neon.FONT_BODY)
+            if (col == 1) sy += 17f
+            col = 1 - col
+        }
+        Neon.label(c, ship.signatureText, w * 0.5f, h * 0.355f, 12.5f,
+            if (ship.signature >= 0) Palette.AMBER else Palette.DIM, Paint.Align.CENTER, 0.5f, 0.16f)
+        Neon.label(c, ship.blurb, w * 0.5f, h * 0.378f, 12f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.02f, Neon.FONT_BODY)
+
+        // roster grid
+        for (i in shipCells.indices) {
+            val cell = shipCells[i]
+            val s2 = ShipDex.list[i]
+            val have = ShipDex.isOwned(owned, s2.id)
+            val isSel = s2.id == selected
+            val edge = when {
+                isSel -> Palette.WHITE
+                have -> Rarity.colors[s2.rarity]
+                else -> Palette.DIM
+            }
+            val l = cell.cx - cell.w / 2
+            val t = cell.cy - cell.h / 2
+            Neon.panel(c, l, t, l + cell.w, t + cell.h, 9f,
+                fade(if (have) s2.color else Palette.DIM, if (isSel) 0.20f else 0.06f),
+                fade(edge, if (have) 0.9f else 0.35f), if (isSel) 2.2f else 1.3f, if (isSel) 1f else 0.4f)
+            if (have) {
+                hullIcon(c, s2, cell.cx, cell.cy - 6f, 15f, 1f)
+                Neon.label(c, s2.name, cell.cx, t + cell.h - 9f, 9.5f, s2.color, Paint.Align.CENTER, 0.3f, 0.04f, Neon.FONT_BODY)
+            } else {
+                Neon.label(c, "?", cell.cx, cell.cy + 8f, 26f, fade(Palette.DIM, 0.7f), Paint.Align.CENTER, 0.3f, 0f)
+                Neon.label(c, Rarity.names[s2.rarity], cell.cx, t + cell.h - 9f, 8f, fade(Rarity.colors[s2.rarity], 0.5f), Paint.Align.CENTER, 0.2f, 0.1f, Neon.FONT_BODY)
+            }
+        }
+
+        val canPull = prefs.cores >= ShipDex.PULL_COST
+        summon.label = "SUMMON  ${ShipDex.PULL_COST}"
+        summon.color = if (canPull) Palette.AMBER else Palette.DIM
+        drawButton(c, summon, time, canPull)
+        drawButton(c, back, time)
+        Neon.label(c, "EARN CORES BY FLYING - SCORE AND WAVES BOTH PAY", cx, h * 0.745f, 11f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.14f, Neon.FONT_BODY)
+    }
+
+    fun drawReveal(c: Canvas, ship: Ship, isNew: Boolean, refund: Int, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xF003010A.toInt())
+        val cx = w * 0.5f
+        val pulse = 0.6f + 0.4f * sin(time * 5f)
+        val rc = Rarity.colors[ship.rarity]
+
+        for (i in 0 until 3) {
+            Neon.ring(c, cx, h * 0.4f, 90f + i * 46f + sin(time * 2f + i) * 8f, fade(rc, (0.32f - i * 0.08f) * pulse), 2.2f, 1f)
+        }
+        Neon.label(c, Rarity.names[ship.rarity], cx, h * 0.24f, 20f, fade(rc, pulse), Paint.Align.CENTER, 1f, 0.4f)
+        hullIcon(c, ship, cx, h * 0.4f + sin(time * 1.8f) * 6f, 52f, 1f)
+        Neon.label(c, ship.name, cx, h * 0.56f, 40f, ship.color, Paint.Align.CENTER, 1f, 0.16f)
+
+        if (isNew) {
+            Neon.label(c, "NEW HULL UNLOCKED", cx, h * 0.61f, 16f, Palette.LIME, Paint.Align.CENTER, 0.8f, 0.26f)
+            Neon.label(c, ship.signatureText, cx, h * 0.65f, 13f, if (ship.signature >= 0) Palette.AMBER else Palette.DIM, Paint.Align.CENTER, 0.5f, 0.16f)
+            Neon.label(c, ship.blurb, cx, h * 0.685f, 12f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.02f, Neon.FONT_BODY)
+        } else {
+            Neon.label(c, "DUPLICATE", cx, h * 0.61f, 16f, Palette.DIM, Paint.Align.CENTER, 0.5f, 0.26f)
+            Neon.label(c, "+$refund CORES", cx, h * 0.655f, 22f, Palette.AMBER, Paint.Align.CENTER, 0.8f, 0.12f, Neon.FONT_NUM)
+        }
+        Neon.label(c, "TAP TO CONTINUE", cx, h * 0.85f, 13f, fade(Palette.SKY, pulse), Paint.Align.CENTER, 0.5f, 0.3f, Neon.FONT_BODY)
     }
 
     fun setPressed(b: Button?, value: Boolean) {
@@ -350,8 +491,11 @@ class Hud(private val prefs: Prefs) {
         val cx = w * 0.5f
         Neon.label(c, "SYSTEM UPGRADE", cx, h * 0.16f, 30f, Palette.CYAN, Paint.Align.CENTER, 1f, 0.28f)
         val hasEvolution = (0 until cardCount).any { cards[it].card?.branchPick != 0 }
-        val sub = if (hasEvolution) "AN AUGMENT IS READY TO SPLIT - CHOOSE A PATH" else "WAVE ${world.wave} CLEARED - CHOOSE ONE"
+        val sub = if (hasEvolution) "AN AUGMENT IS READY TO SPLIT - CHOOSE A PATH" else "WAVE ${world.wave} CLEARED - TAP A CARD TO INSTALL"
         Neon.label(c, sub, cx, h * 0.16f + 26f, 13f, if (hasEvolution) Palette.AMBER else Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.2f)
+        val used = world.loadout.slotsUsed()
+        val slotText = if (world.loadout.slotsFull()) "BAY FULL $used/${Aug.MAX_SLOTS} - LEVEL-UPS ONLY" else "BAY $used/${Aug.MAX_SLOTS}"
+        Neon.label(c, slotText, cx, h * 0.16f + 48f, 12f, if (world.loadout.slotsFull()) Palette.AMBER else Palette.DIM, Paint.Align.CENTER, 0.4f, 0.24f, Neon.FONT_BODY)
 
         for (i in 0 until cardCount) {
             val v = cards[i]
@@ -402,6 +546,11 @@ class Hud(private val prefs: Prefs) {
         val step = 28f
         var x = 20f
         val y = h - bottom - 74f
+        Neon.label(
+            c, "AUGMENTS ${world.loadout.slotsUsed()}/${Aug.MAX_SLOTS}", 20f, y - 6f, 10f,
+            if (world.loadout.slotsFull()) Palette.AMBER else Palette.DIM,
+            Paint.Align.LEFT, 0.3f, 0.22f, Neon.FONT_BODY
+        )
         for (id in badgeIds) {
             if (x + size > w - 108f) break
             val col = Aug.colors[id]

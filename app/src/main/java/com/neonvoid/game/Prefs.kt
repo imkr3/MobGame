@@ -23,9 +23,37 @@ class Prefs(context: Context) {
         get() = sp.getInt("runs", 0)
         set(v) = sp.edit().putInt("runs", v).apply()
 
+    var cores: Int
+        get() = sp.getInt("cores", 0)
+        set(v) = sp.edit().putInt("cores", v.coerceAtLeast(0)).apply()
+
+    /** Bitmask of unlocked hulls; the starter is always available. */
+    var ownedShips: Int
+        get() = sp.getInt("ships", 0) or (1 shl ShipDex.STARTER)
+        set(v) = sp.edit().putInt("ships", v).apply()
+
+    var selectedShip: Int
+        get() = sp.getInt("ship", ShipDex.STARTER)
+        set(v) = sp.edit().putInt("ship", v).apply()
+
+    var pulls: Int
+        get() = sp.getInt("pulls", 0)
+        set(v) = sp.edit().putInt("pulls", v).apply()
+
+    var musicOn: Boolean
+        get() = sp.getBoolean("music", true)
+        set(v) = sp.edit().putBoolean("music", v).apply()
+
+    var sfxOn: Boolean
+        get() = sp.getBoolean("sfx", true)
+        set(v) = sp.edit().putBoolean("sfx", v).apply()
+
     var hapticsOn: Boolean
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit().putBoolean("haptics", v).apply()
+
+    /** Cores earned from a finished run, the gacha currency. */
+    fun coresFor(score: Int, wave: Int): Int = score / 400 + wave * 12 + 20
 
     /** Returns true when this run set a new personal best. */
     fun submit(score: Int, wave: Int, combo: Int): Boolean {
