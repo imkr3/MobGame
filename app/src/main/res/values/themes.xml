@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.NeonVoid" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/void_black</item>
+        <item name="android:navigationBarColor">#FF07030F</item>
+        <item name="android:statusBarColor">#FF07030F</item>
+    </style>
+</resources>

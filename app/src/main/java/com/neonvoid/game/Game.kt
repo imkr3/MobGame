@@ -1,0 +1,289 @@
+package com.neonvoid.game
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
+
+private class TouchEv {
+    var action = 0
+    var id = 0
+    var x = 0f
+    var y = 0f
+}
+
+/**
+ * Owns the state machine, the virtual coordinate system and input routing.
+ * Touch events arrive on the UI thread and are queued; everything else runs on
+ * the render thread inside [update] / [draw].
+ */
+class Game(context: Context) {
+
+    companion object {
+        const val VIRTUAL_W = 540f
+        const val DOWN = 0
+        const val MOVE = 1
+        const val UP = 2
+    }
+
+    enum class State { MENU, PLAYING, PAUSED, GAME_OVER }
+
+    val prefs = Prefs(context)
+    private val haptics = Haptics(context).also { it.enabled = prefs.hapticsOn }
+    private val fx = Fx()
+    private val world = World(fx, haptics)
+    private val bg = Background()
+    private val hud = Hud(prefs)
+
+    var state = State.MENU
+        private set
+
+    private var scale = 1f
+    private var vw = VIRTUAL_W
+    private var vh = 1000f
+    private var topInsetPx = 0f
+    private var bottomInsetPx = 0f
+    private var time = 0f
+    private var newBest = false
+    private var lockoutT = 0f
+
+    private val vignette = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var vignetteReady = false
+
+    // ------------------------------------------------------------ lifecycle
+
+    fun resize(widthPx: Int, heightPx: Int) {
+        if (widthPx <= 0 || heightPx <= 0) return
+        scale = widthPx / VIRTUAL_W
+        vw = VIRTUAL_W
+        vh = heightPx / scale
+        bg.resize(vw, vh)
+        world.resize(vw, vh)
+        layoutHud()
+        vignette.shader = RadialGradient(
+            vw * 0.5f, vh * 0.5f, maxOf(vw, vh) * 0.72f,
+            intArrayOf(0x00000000, 0x00000000, 0x66000000),
+            floatArrayOf(0f, 0.55f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        vignette.style = Paint.Style.FILL
+        vignetteReady = true
+    }
+
+    fun setInsets(topPx: Float, bottomPx: Float) {
+        topInsetPx = topPx
+        bottomInsetPx = bottomPx
+        layoutHud()
+    }
+
+    private fun layoutHud() {
+        hud.layout(vw, vh, topInsetPx / scale, bottomInsetPx / scale)
+    }
+
+    fun onAppPause() {
+        if (state == State.PLAYING) state = State.PAUSED
+    }
+
+    /** Returns true when the game consumed the back gesture. */
+    fun onBack(): Boolean = when (state) {
+        State.PLAYING -> { state = State.PAUSED; true }
+        State.PAUSED -> { state = State.MENU; true }
+        State.GAME_OVER -> { state = State.MENU; true }
+        State.MENU -> false
+    }
+
+    private fun startRun() {
+        world.reset()
+        newBest = false
+        state = State.PLAYING
+        clearPressed()
+    }
+
+    // ---------------------------------------------------------------- input
+
+    private val inputLock = Any()
+    private val queue = ArrayList<TouchEv>()
+    private val pool = ArrayList<TouchEv>()
+    private var moveId = -1
+    private var lastX = 0f
+    private var lastY = 0f
+    private var downButton: Button? = null
+
+    fun postTouch(action: Int, id: Int, xPx: Float, yPx: Float) {
+        synchronized(inputLock) {
+            val e = if (pool.isEmpty()) TouchEv() else pool.removeAt(pool.size - 1)
+            e.action = action
+            e.id = id
+            e.x = xPx / scale
+            e.y = yPx / scale
+            queue.add(e)
+        }
+    }
+
+    private fun drainInput() {
+        val batch: List<TouchEv>
+        synchronized(inputLock) {
+            if (queue.isEmpty()) return
+            batch = ArrayList(queue)
+            queue.clear()
+        }
+        for (e in batch) {
+            when (e.action) {
+                DOWN -> onDown(e.id, e.x, e.y)
+                MOVE -> onMove(e.id, e.x, e.y)
+                else -> onUp(e.id, e.x, e.y)
+            }
+        }
+        synchronized(inputLock) { pool.addAll(batch) }
+    }
+
+    private fun buttonsFor(): List<Button> = when (state) {
+        State.MENU -> listOf(hud.play, hud.haptic)
+        State.PLAYING -> listOf(hud.pause)
+        State.PAUSED -> listOf(hud.resume, hud.restart, hud.quit)
+        State.GAME_OVER -> listOf(hud.retry, hud.toMenu)
+    }
+
+    private fun clearPressed() {
+        downButton?.pressed = false
+        downButton = null
+    }
+
+    private fun onDown(id: Int, x: Float, y: Float) {
+        if (lockoutT > 0f) return
+
+        // Chrome wins over gameplay gestures, otherwise the second-finger overdrive
+        // shortcut would swallow taps on the pause button.
+        for (b in buttonsFor()) {
+            if (b.contains(x, y)) {
+                b.pressed = true
+                downButton = b
+                haptics.light()
+                return
+            }
+        }
+
+        if (state != State.PLAYING) return
+
+        // Overdrive fires on press - either on its button or with a second finger.
+        if (hud.overdrive.contains(x, y) || moveId != -1) {
+            world.triggerOverdrive()
+            if (hud.overdrive.contains(x, y)) return
+        }
+
+        if (moveId == -1) {
+            moveId = id
+            lastX = x
+            lastY = y
+        }
+    }
+
+    private fun onMove(id: Int, x: Float, y: Float) {
+        if (state == State.PLAYING && id == moveId) {
+            world.moveBy(x - lastX, y - lastY)
+            lastX = x
+            lastY = y
+        }
+        val b = downButton
+        if (b != null && !b.contains(x, y)) {
+            b.pressed = false
+        }
+    }
+
+    private fun onUp(id: Int, x: Float, y: Float) {
+        if (id == moveId) moveId = -1
+        val b = downButton
+        if (b != null) {
+            val fired = b.pressed && b.contains(x, y)
+            b.pressed = false
+            downButton = null
+            if (fired) activate(b)
+        }
+    }
+
+    private fun activate(b: Button) {
+        when (b) {
+            hud.play -> startRun()
+            hud.haptic -> {
+                prefs.hapticsOn = !prefs.hapticsOn
+                haptics.enabled = prefs.hapticsOn
+                haptics.medium()
+            }
+            hud.pause -> state = State.PAUSED
+            hud.resume -> state = State.PLAYING
+            hud.restart -> startRun()
+            hud.quit -> state = State.MENU
+            hud.retry -> startRun()
+            hud.toMenu -> state = State.MENU
+        }
+    }
+
+    // --------------------------------------------------------------- update
+
+    fun update(dtRaw: Float) {
+        val dt = clamp(dtRaw, 0f, 0.05f)
+        time += dt
+        if (lockoutT > 0f) lockoutT -= dt
+        drainInput()
+
+        when (state) {
+            State.MENU -> {
+                bg.update(dt, 0.12f)
+                fx.update(dt)
+            }
+            State.PLAYING -> {
+                bg.update(dt, world.intensity)
+                world.update(dt)
+                if (world.gameOver) {
+                    state = State.GAME_OVER
+                    newBest = prefs.submit(world.score, world.wave, world.maxCombo)
+                    lockoutT = 0.9f
+                    clearPressed()
+                }
+            }
+            State.PAUSED -> { /* frozen */ }
+            State.GAME_OVER -> {
+                bg.update(dt, world.intensity * 0.4f)
+                fx.update(dt)
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------- draw
+
+    fun draw(c: Canvas) {
+        c.save()
+        c.scale(scale, scale)
+
+        bg.draw(c)
+
+        if (state != State.MENU) {
+            c.save()
+            c.translate(fx.shakeX, fx.shakeY)
+            world.draw(c)
+            c.restore()
+        }
+
+        when (state) {
+            State.MENU -> hud.drawMenu(c, time)
+            State.PLAYING -> hud.drawGame(c, world, time)
+            State.PAUSED -> { hud.drawGame(c, world, time); hud.drawPause(c, time) }
+            State.GAME_OVER -> { hud.drawGame(c, world, time); hud.drawGameOver(c, world, newBest, time) }
+        }
+
+        scanlines(c)
+        if (vignetteReady) c.drawRect(0f, 0f, vw, vh, vignette)
+        fx.drawFlash(c, vw, vh)
+        c.restore()
+    }
+
+    private fun scanlines(c: Canvas) {
+        var y = 0f
+        val color = 0x14000000
+        while (y < vh) {
+            Neon.hairline(c, 0f, y, vw, y, color, 1f)
+            y += 5f
+        }
+    }
+}
