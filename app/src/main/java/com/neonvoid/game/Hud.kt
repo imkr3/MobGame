@@ -55,6 +55,18 @@ class Hud(private val prefs: Prefs) {
     val retry = Button("FLY AGAIN", Palette.CYAN)
     val toMenu = Button("MAIN MENU", Palette.DIM)
 
+    /** One offered augment: its card geometry, hit target and pre-wrapped copy. */
+    class CardView {
+        var card: AugCard? = null
+        val lines = ArrayList<String>(3)
+        val btn = Button("", Palette.CYAN)
+    }
+
+    val cards = Array(3) { CardView() }
+    var cardCount = 0
+        private set
+    private val badgeIds = ArrayList<Int>(Aug.COUNT)
+
     private var w = 540f
     private var h = 1000f
     private var top = 20f
@@ -76,9 +88,9 @@ class Hud(private val prefs: Prefs) {
         pause.place(w - 34f, top + 22f, 44f, 44f)
         overdrive.place(w - 56f, h - bottom - 62f, 68f, 68f)
 
-        resume.place(cx, h * 0.44f, w * 0.58f, 58f)
-        restart.place(cx, h * 0.44f + 78f, w * 0.58f, 52f)
-        quit.place(cx, h * 0.44f + 148f, w * 0.58f, 52f)
+        resume.place(cx, h * 0.58f, w * 0.58f, 58f)
+        restart.place(cx, h * 0.58f + 76f, w * 0.58f, 52f)
+        quit.place(cx, h * 0.58f + 144f, w * 0.58f, 52f)
 
         retry.place(cx, h * 0.66f, w * 0.60f, 58f)
         toMenu.place(cx, h * 0.66f + 76f, w * 0.50f, 48f)
@@ -109,7 +121,7 @@ class Hud(private val prefs: Prefs) {
 
     // ------------------------------------------------------------- in-game
 
-    fun drawGame(c: Canvas, world: World, time: Float) {
+    fun drawGame(c: Canvas, world: World, time: Float, showBanner: Boolean = true) {
         val p = world.player
 
         // score
@@ -170,8 +182,9 @@ class Hud(private val prefs: Prefs) {
             Neon.label(c, "SHIELD x${p.shield}", 24f, h - bottom - 62f, 13f, Palette.LIME, Paint.Align.LEFT, 0.5f, 0.14f)
         }
 
+        drawBadges(c, world)
         drawOverdrive(c, world, time)
-        drawBanner(c, world, time)
+        if (showBanner) drawBanner(c, world, time)
     }
 
     private fun drawOverdrive(c: Canvas, world: World, time: Float) {
@@ -211,7 +224,12 @@ class Hud(private val prefs: Prefs) {
         val alarm = world.banner == "WARNING"
         val col = if (alarm) Palette.RED else Palette.CYAN
         val a = if (alarm) (0.6f + 0.4f * sin(time * 14f)) * t else t
-        Neon.label(c, world.banner, w * 0.5f, y, 44f, fade(col, a), Paint.Align.CENTER, 1f, 0.25f)
+        // shrink to fit rather than running off both edges
+        var size = 44f
+        val maxW = w * 0.88f
+        val measured = Neon.textWidth(world.banner, size, 0.25f)
+        if (measured > maxW) size *= maxW / measured
+        Neon.label(c, world.banner, w * 0.5f, y, size, fade(col, a), Paint.Align.CENTER, 1f, 0.25f)
         if (world.bannerSub.isNotEmpty()) {
             Neon.label(c, world.bannerSub, w * 0.5f, y + 32f, 18f, fade(Palette.VIOLET, a), Paint.Align.CENTER, 0.7f, 0.28f)
         }
@@ -242,9 +260,10 @@ class Hud(private val prefs: Prefs) {
         Neon.label(c, "GRAZE BULLETS TO CHARGE OVERDRIVE", cx, h - bottom - 20f, 13f, Palette.AMBER, Paint.Align.CENTER, 0.5f, 0.2f)
     }
 
-    fun drawPause(c: Canvas, time: Float) {
+    fun drawPause(c: Canvas, world: World, time: Float) {
         Neon.fillRect(c, 0f, 0f, w, h, 0xCC05020C.toInt())
-        Neon.label(c, "PAUSED", w * 0.5f, h * 0.30f, 46f, Palette.CYAN, Paint.Align.CENTER, 1f, 0.3f)
+        Neon.label(c, "PAUSED", w * 0.5f, h * 0.26f, 46f, Palette.CYAN, Paint.Align.CENTER, 1f, 0.3f)
+        drawLoadout(c, world)
         drawButton(c, resume, time, true)
         drawButton(c, restart, time)
         drawButton(c, quit, time)
@@ -281,5 +300,136 @@ class Hud(private val prefs: Prefs) {
 
     fun setPressed(b: Button?, value: Boolean) {
         b?.pressed = value
+    }
+
+    // ------------------------------------------------------------ augments
+
+    private fun wrap(text: String, size: Float, maxW: Float, out: MutableList<String>) {
+        out.clear()
+        var line = StringBuilder()
+        for (word in text.split(' ')) {
+            val candidate = if (line.isEmpty()) word else "$line $word"
+            if (Neon.textWidth(candidate, size, 0.02f, Neon.FONT_BODY) > maxW && line.isNotEmpty()) {
+                out.add(line.toString())
+                line = StringBuilder(word)
+            } else {
+                line = StringBuilder(candidate)
+            }
+            if (out.size >= 2) break
+        }
+        if (line.isNotEmpty() && out.size < 3) out.add(line.toString())
+    }
+
+    /** Called once when the offer is rolled - lays the cards out and wraps their copy. */
+    fun prepareCards(offers: List<AugCard>) {
+        cardCount = minOf(offers.size, cards.size)
+        val cardW = w * 0.84f
+        val cardH = 128f
+        val gap = 18f
+        val total = cardCount * cardH + (cardCount - 1) * gap
+        var y = h * 0.5f - total * 0.5f + cardH * 0.5f
+        for (i in 0 until cardCount) {
+            val v = cards[i]
+            v.card = offers[i]
+            v.btn.place(w * 0.5f, y, cardW, cardH)
+            v.btn.color = offers[i].color
+            v.btn.enabled = true
+            v.btn.pressed = false
+            wrap(offers[i].body, 15f, cardW - 118f, v.lines)
+            y += cardH + gap
+        }
+        for (i in cardCount until cards.size) {
+            cards[i].card = null
+            cards[i].btn.enabled = false
+        }
+    }
+
+    fun drawAugment(c: Canvas, world: World, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xE603010A.toInt())
+
+        val cx = w * 0.5f
+        Neon.label(c, "SYSTEM UPGRADE", cx, h * 0.16f, 30f, Palette.CYAN, Paint.Align.CENTER, 1f, 0.28f)
+        val hasEvolution = (0 until cardCount).any { cards[it].card?.branchPick != 0 }
+        val sub = if (hasEvolution) "AN AUGMENT IS READY TO SPLIT - CHOOSE A PATH" else "WAVE ${world.wave} CLEARED - CHOOSE ONE"
+        Neon.label(c, sub, cx, h * 0.16f + 26f, 13f, if (hasEvolution) Palette.AMBER else Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.2f)
+
+        for (i in 0 until cardCount) {
+            val v = cards[i]
+            val card = v.card ?: continue
+            val b = v.btn
+            val l = b.cx - b.w / 2
+            val r = b.cx + b.w / 2
+            val t = b.cy - b.h / 2
+            val bot = b.cy + b.h / 2
+            val evo = card.branchPick != 0
+            val pulse = if (b.pressed) 1f else 0.7f + 0.3f * sin(time * 3f + i * 0.7f)
+
+            Neon.panel(c, l, t, r, bot, 16f, fade(card.color, if (b.pressed) 0.26f else 0.10f), fade(card.color, pulse), if (evo) 2.6f else 1.9f, 1f)
+            if (evo) {
+                Neon.panel(c, l + 5f, t + 5f, r - 5f, bot - 5f, 12f, 0, fade(Palette.AMBER, 0.35f * pulse), 1f, 0.6f)
+            }
+
+            Neon.label(c, card.tag, l + 22f, t + 26f, 12f, fade(card.color, 0.85f), Paint.Align.LEFT, 0.5f, 0.26f)
+            Neon.label(c, card.title, l + 22f, t + 58f, 28f, card.color, Paint.Align.LEFT, 0.9f, 0.1f)
+            var ty = t + 82f
+            for (line in v.lines) {
+                Neon.label(c, line, l + 22f, ty, 15f, Palette.DIM, Paint.Align.LEFT, 0.3f, 0.02f, Neon.FONT_BODY)
+                ty += 19f
+            }
+
+            // level pips on the right edge
+            val maxPips = if (Aug.isAbility(card.id)) Aug.EVOLVED_MAX else Aug.statMax[card.id]
+            val have = world.loadout.lvl[card.id]
+            val next = if (evo) have else have + 1
+            for (pip in 0 until maxPips) {
+                val py = t + 34f + pip * 15f
+                val on = pip < next
+                val fresh = pip == next - 1
+                Neon.fillRect(
+                    c, r - 34f, py, r - 20f, py + 8f,
+                    fade(if (on) card.color else Palette.DIM, if (fresh) 1f else if (on) 0.55f else 0.18f)
+                )
+            }
+        }
+    }
+
+    // -------------------------------------------------------------- badges
+
+    private fun drawBadges(c: Canvas, world: World) {
+        world.loadout.ownedList(badgeIds)
+        if (badgeIds.isEmpty()) return
+        val size = 26f
+        val step = 28f
+        var x = 20f
+        val y = h - bottom - 74f
+        for (id in badgeIds) {
+            if (x + size > w - 108f) break
+            val col = Aug.colors[id]
+            val evolved = Aug.isAbility(id) && world.loadout.branch[id] != 0
+            Neon.panel(c, x, y, x + size, y + size, 6f, fade(col, if (evolved) 0.28f else 0.12f), fade(col, if (evolved) 1f else 0.6f), 1.3f, 0.5f)
+            Neon.label(c, Aug.codes[id], x + size * 0.5f, y + 13f, 10.5f, col, Paint.Align.CENTER, 0.35f, 0.02f, Neon.FONT_BODY)
+            Neon.label(c, world.loadout.lvl[id].toString(), x + size * 0.5f, y + 24f, 11f, fade(Palette.WHITE, 0.9f), Paint.Align.CENTER, 0.25f, 0f, Neon.FONT_NUM)
+            x += step
+        }
+    }
+
+    /** Full loadout readout, shown on the pause panel. */
+    private fun drawLoadout(c: Canvas, world: World) {
+        world.loadout.ownedList(badgeIds)
+        val cx = w * 0.5f
+        Neon.label(c, "LOADOUT", cx, h * 0.36f, 14f, Palette.VIOLET, Paint.Align.CENTER, 0.5f, 0.3f)
+        if (badgeIds.isEmpty()) {
+            Neon.label(c, "NO AUGMENTS INSTALLED", cx, h * 0.36f + 26f, 14f, Palette.DIM, Paint.Align.CENTER, 0.3f, 0.14f, Neon.FONT_BODY)
+            return
+        }
+        var y = h * 0.36f + 28f
+        for (id in badgeIds) {
+            val lo = world.loadout
+            val name = Aug.tierName(id, lo.lvl[id], if (Aug.isAbility(id)) lo.branch[id] else 0)
+            Neon.label(c, name, cx - 12f, y, 15f, Aug.colors[id], Paint.Align.RIGHT, 0.4f, 0.12f)
+            Neon.label(c, "Lv ${lo.lvl[id]}", cx + 16f, y, 15f, fade(Palette.WHITE, 0.75f), Paint.Align.LEFT, 0.3f, 0.05f, Neon.FONT_NUM)
+            y += 20f
+            if (y > h * 0.55f) break
+        }
     }
 }

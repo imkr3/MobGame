@@ -27,7 +27,7 @@ class Game(context: Context) {
         const val UP = 2
     }
 
-    enum class State { MENU, PLAYING, PAUSED, GAME_OVER }
+    enum class State { MENU, PLAYING, PAUSED, GAME_OVER, AUGMENT }
 
     val prefs = Prefs(context)
     private val haptics = Haptics(context).also { it.enabled = prefs.hapticsOn }
@@ -47,6 +47,7 @@ class Game(context: Context) {
     private var time = 0f
     private var newBest = false
     private var lockoutT = 0f
+    private var offers: List<AugCard> = emptyList()
 
     private val vignette = Paint(Paint.ANTI_ALIAS_FLAG)
     private var vignetteReady = false
@@ -85,8 +86,22 @@ class Game(context: Context) {
         if (state == State.PLAYING) state = State.PAUSED
     }
 
+    private fun openAugmentChoice() {
+        offers = world.rollAugments(3)
+        if (offers.isEmpty()) {          // everything maxed: skip the screen
+            world.applyAugment(AugCard(Aug.SALVAGE, 0, "SALVAGE", "BONUS", "", Palette.AMBER))
+            return
+        }
+        hud.prepareCards(offers)
+        world.hideBanner()
+        state = State.AUGMENT
+        lockoutT = 0.3f
+        clearPressed()
+    }
+
     /** Returns true when the game consumed the back gesture. */
     fun onBack(): Boolean = when (state) {
+        State.AUGMENT -> true          // a choice has to be made
         State.PLAYING -> { state = State.PAUSED; true }
         State.PAUSED -> { state = State.MENU; true }
         State.GAME_OVER -> { state = State.MENU; true }
@@ -109,6 +124,7 @@ class Game(context: Context) {
     private var lastX = 0f
     private var lastY = 0f
     private var downButton: Button? = null
+    private var downPointer = -1
 
     fun postTouch(action: Int, id: Int, xPx: Float, yPx: Float) {
         synchronized(inputLock) {
@@ -143,11 +159,13 @@ class Game(context: Context) {
         State.PLAYING -> listOf(hud.pause)
         State.PAUSED -> listOf(hud.resume, hud.restart, hud.quit)
         State.GAME_OVER -> listOf(hud.retry, hud.toMenu)
+        State.AUGMENT -> (0 until hud.cardCount).map { hud.cards[it].btn }
     }
 
     private fun clearPressed() {
         downButton?.pressed = false
         downButton = null
+        downPointer = -1
     }
 
     private fun onDown(id: Int, x: Float, y: Float) {
@@ -159,6 +177,7 @@ class Game(context: Context) {
             if (b.contains(x, y)) {
                 b.pressed = true
                 downButton = b
+                downPointer = id
                 haptics.light()
                 return
             }
@@ -186,7 +205,7 @@ class Game(context: Context) {
             lastY = y
         }
         val b = downButton
-        if (b != null && !b.contains(x, y)) {
+        if (b != null && id == downPointer && !b.contains(x, y)) {
             b.pressed = false
         }
     }
@@ -194,15 +213,27 @@ class Game(context: Context) {
     private fun onUp(id: Int, x: Float, y: Float) {
         if (id == moveId) moveId = -1
         val b = downButton
-        if (b != null) {
+        if (b != null && id == downPointer) {
             val fired = b.pressed && b.contains(x, y)
             b.pressed = false
             downButton = null
+            downPointer = -1
             if (fired) activate(b)
         }
     }
 
     private fun activate(b: Button) {
+        if (state == State.AUGMENT) {
+            for (i in 0 until hud.cardCount) {
+                if (hud.cards[i].btn === b) {
+                    val card = hud.cards[i].card ?: return
+                    world.applyAugment(card)
+                    state = State.PLAYING
+                    return
+                }
+            }
+            return
+        }
         when (b) {
             hud.play -> startRun()
             hud.haptic -> {
@@ -232,9 +263,14 @@ class Game(context: Context) {
                 bg.update(dt, 0.12f)
                 fx.update(dt)
             }
+            State.AUGMENT -> {
+                bg.update(dt, world.intensity * 0.35f)
+                fx.update(dt)
+            }
             State.PLAYING -> {
                 bg.update(dt, world.intensity)
                 world.update(dt)
+                if (world.pendingAugment) openAugmentChoice()
                 if (world.gameOver) {
                     state = State.GAME_OVER
                     newBest = prefs.submit(world.score, world.wave, world.maxCombo)
@@ -268,13 +304,16 @@ class Game(context: Context) {
         when (state) {
             State.MENU -> hud.drawMenu(c, time)
             State.PLAYING -> hud.drawGame(c, world, time)
-            State.PAUSED -> { hud.drawGame(c, world, time); hud.drawPause(c, time) }
-            State.GAME_OVER -> { hud.drawGame(c, world, time); hud.drawGameOver(c, world, newBest, time) }
+            State.PAUSED -> { hud.drawGame(c, world, time, false); hud.drawPause(c, world, time) }
+            State.GAME_OVER -> { hud.drawGame(c, world, time, false); hud.drawGameOver(c, world, newBest, time) }
+            State.AUGMENT -> { hud.drawGame(c, world, time, false); hud.drawAugment(c, world, time) }
         }
 
         scanlines(c)
         if (vignetteReady) c.drawRect(0f, 0f, vw, vh, vignette)
-        fx.drawFlash(c, vw, vh)
+        // Fx is frozen while paused, so a flash raised on the last live frame
+        // would otherwise stay lit for the whole pause.
+        if (state != State.PAUSED) fx.drawFlash(c, vw, vh)
         c.restore()
     }
 

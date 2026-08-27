@@ -15,8 +15,24 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            // Supplied by CI; a local release build falls back to unsigned.
+            val store = System.getenv("NEONVOID_KEYSTORE")
+            if (store != null) {
+                storeFile = file(store)
+                storePassword = System.getenv("NEONVOID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("NEONVOID_KEY_ALIAS")
+                keyPassword = System.getenv("NEONVOID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (System.getenv("NEONVOID_KEYSTORE") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

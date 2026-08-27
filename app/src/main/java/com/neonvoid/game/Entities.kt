@@ -30,10 +30,16 @@ class Bullet {
     var damage = 1
     var hostile = false
     var color = Palette.CYAN
-    var style = 0            // 0 = orb, 1 = lance, 2 = heavy
+    var style = 0            // 0 = orb, 1 = lance, 2 = heavy, 3 = missile
     var life = 0f
     var grazed = false
     var spin = 0f
+    var pierce = 0           // extra enemies this shot can pass through
+    var hitCd = 0f           // re-hit lockout so a piercing shot cannot chew one target
+    var homing = false
+    var turn = 0f            // radians per second
+    var target = -1
+    var splash = 0f          // blast radius on impact
 }
 
 class Enemy {
@@ -254,6 +260,14 @@ object Draw {
             2 -> {
                 Neon.orb(c, b.x, b.y, b.r, b.color, 1.2f)
                 Neon.ring(c, b.x, b.y, b.r * 1.5f, fade(lighten(b.color, 0.3f), 0.6f), 1.2f, 0.6f)
+            }
+            3 -> {
+                val n = len(b.vx, b.vy)
+                val ux = if (n > 0f) b.vx / n else 0f
+                val uy = if (n > 0f) b.vy / n else -1f
+                Neon.line(c, b.x - ux * b.r * 3.4f, b.y - uy * b.r * 3.4f, b.x, b.y, fade(b.color, 0.5f), b.r * 0.7f, 0.7f)
+                Neon.orb(c, b.x, b.y, b.r, b.color, 1.1f)
+                if (b.splash > 0f) Neon.ring(c, b.x, b.y, b.r * 1.9f, fade(Palette.WHITE, 0.55f), 1.3f, 0.6f)
             }
             else -> Neon.orb(c, b.x, b.y, b.r, b.color, 1f)
         }
