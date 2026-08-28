@@ -65,9 +65,15 @@ where big runs are made.
 
 The run moves through five themed sectors, five waves each, then loops at a
 higher difficulty tier. Each sector has its own palette, enemy roster, music
-track and boss. Difficulty is linear through the opening and quadratic later —
-the first waves stay readable while a fully-augmented ship still meets bosses
-that can kill it. From wave 10 every boss also calls in escorts.
+track and boss.
+
+The ramp is deliberately lopsided. The opening is light: two enemy groups on
+wave one drawn from the gentler half of the roster, enemies that fire about a
+quarter slower than baseline, and the slowest projectiles in the game. From
+there enemy health, fire rate, projectile speed and group count all climb, with
+health picking up a quadratic term so a fully-augmented ship still meets
+something that can kill it. Bosses scale on wave squared, cycle their patterns
+faster the deeper you are, and call in escorts from wave 10.
 
 | Sector | Enemies | Boss |
 | --- | --- | --- |
@@ -179,9 +185,11 @@ the game. Music, effects and haptics each toggle from the title screen.
 | **Turret** | Hovers and pumps out 8-way radial bursts. Tanky. Withdraws after 16 seconds |
 | **Guardian** | Boss, every 5th wave. Three phases — aimed fans, then radial rings, then a relentless spiral with heavy shells |
 
-Weapons upgrade to level 5 via `W` pickups; `S` grants a shield that absorbs one hit,
-`+` is an extra life. A pity timer guarantees a weapon drop if you've gone 14 kills
-without one, so a cold-streak run still ramps up.
+Weapons upgrade to level 5 via `W` pickups; `S` grants a shield that absorbs one
+hit, `+` is an extra life. Weapon drops thin out as the gun grows, so the last
+levels are earned rather than handed over, and shields stop dropping once you are
+at capacity. A pity timer still guarantees a weapon eventually — sooner at low
+levels, much later at high ones — so a cold streak never strands you.
 
 ## Building
 
@@ -242,6 +250,8 @@ Most of the feel lives in a handful of constants:
 - `Sectors.list` — sector palettes, enemy rosters and boss assignment
 - `ShipDex.list` / `Rarity.weights` — hull stats and pull rates
 - `Loadout` derived getters — what each stat module is worth
+- `World.dropLoot` — pickup rates and the weapon pity curve
+- `World.buildWave` / `spawnEnemy` — health, fire rate and group-count ramps
 - `Arsenal.tick*` — cadence and damage for every ability and branch
 - `World.spawnEnemy` — per-enemy HP, speed and fire rates, plus the per-wave scaling
 - `World.buildWave` — wave composition and group pacing

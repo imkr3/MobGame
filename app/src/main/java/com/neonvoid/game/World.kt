@@ -113,7 +113,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         for (u in pickups) u.active = false
         script.clear(); scriptIdx = 0
         score = 0; combo = 0; maxCombo = 0; comboT = 0f
-        wave = 0; kills = 0; killsSinceWeapon = 6; gameOver = false
+        wave = 0; kills = 0; killsSinceWeapon = 4; gameOver = false
         loadout.reset()
         arsenal.reset()
         pendingAugment = false
@@ -317,8 +317,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     private fun spawnEnemy(kind: Int, x: Float, y: Float, hpMul: Float): Enemy? {
         val e = obtainEnemy() ?: return null
-        val speedMul = clamp(1f + (wave - 1) * 0.045f, 1f, 1.9f)
-        val rateMul = clamp(1f - (wave - 1) * 0.035f, 0.45f, 1f)
+        val speedMul = clamp(0.9f + (wave - 1) * 0.05f, 0.9f, 1.95f)
+        // >1 means slower firing: the first waves deliberately shoot less
+        val rateMul = clamp(1.28f - (wave - 1) * 0.048f, 0.42f, 1.28f)
         e.active = true
         e.kind = kind
         e.x = x; e.y = y
@@ -453,7 +454,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 e.r = if (sector.boss == BT.FORGE) 58f else 52f
                 // quadratic term is what stops a maxed loadout melting late bosses;
                 // the tier bonus stays modest so deep loops do not become a slog
-                e.hp = (150f + wave * 48f + wave * wave * 1.9f) * typeMul * (1f + Sectors.tier(wave) * 0.35f)
+                e.hp = (120f + wave * 42f + wave * wave * 1.9f) * typeMul * (1f + Sectors.tier(wave) * 0.35f)
                 e.vy = 90f
                 e.holdY = h * 0.20f
                 e.fireEvery = 1f
@@ -467,7 +468,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
 
         // Elites appear once the run is deep enough: tougher, worth more.
-        if (kind != EK.BOSS && kind != EK.MINE && wave >= 7 && chance(clamp(0.04f + wave * 0.011f, 0f, 0.45f))) {
+        if (kind != EK.BOSS && kind != EK.MINE && wave >= 8 && chance(clamp(0.03f + wave * 0.012f, 0f, 0.45f))) {
             e.elite = true
             e.hp *= 1.6f + clamp(wave * 0.02f, 0f, 0.8f)
             e.r *= 1.12f
@@ -493,7 +494,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val tier = Sectors.tier(n)
         // linear early, quadratic late: the opening stays readable while a
         // fully-augmented ship still meets something that can kill it
-        val hpMul = 1f + (n - 1) * 0.30f + (n - 1) * (n - 1) * 0.010f + tier * 0.9f
+        val hpMul = 1f + (n - 1) * 0.22f + (n - 1) * (n - 1) * 0.014f + tier * 0.9f
 
         if (Sectors.isBossWave(n)) {
             script.add(Spawn(1.9f, EK.BOSS, w * 0.5f, -110f, hpMul))
@@ -502,10 +503,11 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
         var t = 0.4f
         val waveInSector = (n - 1) % Sectors.WAVES_PER_SECTOR
-        val groups = 2 + waveInSector.coerceAtMost(3) + Sectors.index(n) / 2 + tier
+        // grows with the run overall, with a small breather at each sector start
+        val groups = 2 + waveInSector.coerceAtMost(3) + (n / 6).coerceAtMost(4) + tier
         for (g in 0 until groups) {
             // the first two waves of the run stick to the gentler half of the roster
-            val kind = if (n <= 2) sector.roster[g % 2] else sector.roster[(g + n) % sector.roster.size]
+            val kind = if (n <= 3) sector.roster[g % 2] else sector.roster[(g + n) % sector.roster.size]
             t += addGroup(kind, t, n, hpMul)
         }
     }
@@ -857,7 +859,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     }
 
     internal fun enemyBulletSpeed(): Float =
-        clamp(170f + wave * 10f + Sectors.tier(wave) * 45f, 170f, 470f)
+        clamp(155f + wave * 11f + Sectors.tier(wave) * 45f, 155f, 470f)
 
     /** Fire an enemy bullet. Used by [EnemyAI] and [BossAI]. */
     internal fun hostileShot(x: Float, y: Float, angle: Float, speed: Float, r: Float, color: Int, style: Int): Bullet =
@@ -925,13 +927,24 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     private fun dropLoot(x: Float, y: Float, bias: Float, fromTough: Boolean = false) {
         val roll = rnd(1f)
-        val starving = player.weapon < MAX_WEAPON && killsSinceWeapon >= 14
+        // Weapon drops thin out as the gun grows, so the last levels are earned
+        // rather than handed over; a long pity timer stops a cold streak dead.
+        val starving = player.weapon < MAX_WEAPON && killsSinceWeapon >= 14 + player.weapon * 6
+        val weaponChance = 0.042f * bias * clamp(1f - player.weapon * 0.13f, 0.3f, 1f)
+        val lifeChance = if (fromTough) 0.012f * bias else 0f
+        val shieldChance = if (player.shield >= loadout.maxShield()) 0f else 0.018f * bias
+        // Cumulative windows - each kind needs its own slice of the roll, or the
+        // later branches are simply unreachable.
+        val wEnd = weaponChance
+        val lEnd = wEnd + lifeChance
+        val sEnd = lEnd + shieldChance
+        val gEnd = sEnd + 0.34f
         val kind = when {
             starving -> PK.WEAPON
-            roll < 0.085f * bias -> PK.WEAPON
-            roll < 0.13f * bias -> PK.SHIELD
-            fromTough && roll < 0.13f * bias -> PK.LIFE
-            roll < 0.42f -> PK.GEM
+            roll < wEnd -> PK.WEAPON
+            roll < lEnd -> PK.LIFE
+            roll < sEnd -> PK.SHIELD
+            roll < gEnd -> PK.GEM
             else -> return
         }
         val u = pickups.firstOrNull { !it.active } ?: return
