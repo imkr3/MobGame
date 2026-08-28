@@ -20,26 +20,34 @@ object Aug {
     const val WING = 8
     const val VORTEX = 9
     const val SENTINEL = 10
-    const val ABILITIES = 11
+    const val CHRONO = 11
+    const val RICOCHET = 12
+    const val FRACTURE = 13
+    const val ABILITIES = 14
 
     // stat modules
-    const val RAPID = 11
-    const val POWER = 12
-    const val VELOCITY = 13
-    const val AGILITY = 14
-    const val MAGNET = 15
-    const val GRAZE = 16
-    const val ARMOR = 17
-    const val SALVAGE = 18
-    const val REPAIR = 19
-    const val COOLANT = 20
-    const val PIERCE = 21
-    const val CRIT = 22
-    const val RECLAIM = 23
-    const val HARDPOINT = 24
-    const val EVASION = 25
-    const val BOUNTY = 26
-    const val COUNT = 27
+    const val RAPID = 14
+    const val POWER = 15
+    const val VELOCITY = 16
+    const val AGILITY = 17
+    const val MAGNET = 18
+    const val GRAZE = 19
+    const val ARMOR = 20
+    const val SALVAGE = 21
+    const val REPAIR = 22
+    const val COOLANT = 23
+    const val PIERCE = 24
+    const val CRIT = 25
+    const val RECLAIM = 26
+    const val HARDPOINT = 27
+    const val EVASION = 28
+    const val BOUNTY = 29
+    const val MOMENTUM = 30
+    const val VENGEANCE = 31
+    const val OVERCLOCK = 32
+    const val AFTERBURN = 33
+    const val RECOVERY = 34
+    const val COUNT = 35
 
     /** Abilities cap at 3 before they must evolve, then run to 5 down the chosen branch. */
     const val BASE_MAX = 3
@@ -61,29 +69,34 @@ object Aug {
 
     val names = arrayOf(
         "SPREAD", "LANCE", "SWARM", "ORBIT", "ARC", "PULSE", "FLAK", "TETHER", "WING",
-        "VORTEX", "SENTINEL",
+        "VORTEX", "SENTINEL", "CHRONO", "RICOCHET", "FRACTURE",
         "RAPID", "POWER", "VELOCITY", "AGILITY", "MAGNET", "GRAZE", "ARMOR", "SALVAGE",
-        "REPAIR", "COOLANT", "PIERCE", "CRIT", "RECLAIM", "HARDPOINT", "EVASION", "BOUNTY"
+        "REPAIR", "COOLANT", "PIERCE", "CRIT", "RECLAIM", "HARDPOINT", "EVASION", "BOUNTY",
+        "MOMENTUM", "VENGEANCE", "OVERCLOCK", "AFTERBURN", "RECOVERY"
     )
 
     val statMax = intArrayOf(
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        5, 4, 3, 3, 3, 3, 2, 3, 2, 3, 2, 3, 3, 2, 3, 3
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        5, 4, 3, 3, 3, 3, 2, 3, 2, 3, 2, 3, 3, 2, 3, 3,
+        3, 3, 3, 3, 3
     )
 
     val colors = intArrayOf(
         Palette.CYAN, Palette.VIOLET, Palette.LIME, Palette.AMBER, Palette.SKY, Palette.MAGENTA,
         Palette.RED, Palette.ROSE, Palette.WHITE, Palette.VIOLET, Palette.SKY,
+        Palette.SKY, Palette.LIME, Palette.ROSE,
         Palette.CYAN, Palette.RED, Palette.SKY, Palette.LIME, Palette.AMBER, Palette.MAGENTA,
         Palette.LIME, Palette.AMBER, Palette.ROSE, Palette.SKY, Palette.VIOLET, Palette.RED,
-        Palette.CYAN, Palette.WHITE, Palette.LIME, Palette.AMBER
+        Palette.CYAN, Palette.WHITE, Palette.LIME, Palette.AMBER,
+        Palette.CYAN, Palette.RED, Palette.AMBER, Palette.RED, Palette.LIME
     )
 
     /** Three-letter badge codes for the HUD. */
     val codes = arrayOf(
         "SPR", "LNC", "SWM", "ORB", "ARC", "PLS", "FLK", "TTH", "WNG", "VTX", "SNT",
+        "CHR", "RIC", "FRC",
         "RPD", "PWR", "VEL", "AGI", "MAG", "GRZ", "ARM", "SLV", "REP", "COL", "PRC", "CRT",
-        "RCL", "HRD", "EVA", "BTY"
+        "RCL", "HRD", "EVA", "BTY", "MOM", "VNG", "OVC", "AFB", "RCV"
     )
 
     val branchNames = arrayOf(
@@ -97,7 +110,10 @@ object Aug {
         arrayOf("LEECH", "SIPHON"),
         arrayOf("ESCORT", "STRIKE"),
         arrayOf("SINGULARITY", "IMPLOSION"),
-        arrayOf("BATTERY", "MORTAR")
+        arrayOf("BATTERY", "MORTAR"),
+        arrayOf("STASIS", "BACKLASH"),
+        arrayOf("CAROM", "DEMOLISHER"),
+        arrayOf("SHATTER", "RUPTURE")
     )
 
     private val abilityBlurb = arrayOf(
@@ -111,7 +127,10 @@ object Aug {
         "A cutting beam latches onto the nearest target.",
         "Two wingmen fly your flanks and fire with you.",
         "A singularity drags everything nearby into it.",
-        "Drops a turret that holds position and fires."
+        "Drops a turret that holds position and fires.",
+        "A time field around you drags enemy fire to a crawl.",
+        "A heavy orb bounces around the screen, mauling anything it meets.",
+        "Your main gun shots shatter into shards on impact."
     )
 
     private val branchBlurb = arrayOf(
@@ -125,11 +144,23 @@ object Aug {
         arrayOf("The beam feeds your overdrive as it cuts.", "Cuts far harder and drags the target in."),
         arrayOf("Wingmen soak incoming fire for you.", "Wingmen carry missiles of their own."),
         arrayOf("Wider pull that banks caught fire as score.", "Collapses into a devastating detonation."),
-        arrayOf("Two turrets, and they fire faster.", "The turret lobs shells instead of bolts.")
+        arrayOf("Two turrets, and they fire faster.", "The turret lobs shells instead of bolts."),
+        arrayOf(
+            "A huge, deeper field. Enemies caught in it cannot shoot.",
+            "Fire that lingers in the field turns and flies back at them."
+        ),
+        arrayOf(
+            "Three fast orbs carving the screen at once.",
+            "One colossal orb that detonates on every bounce."
+        ),
+        arrayOf(
+            "Many more shards, thrown far wider.",
+            "Fewer shards, but heavy ones that seek a target."
+        )
     )
 
     private val statBlurb = arrayOf(
-        "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "",
         "+10% fire rate.",
         "+1 damage on every shot.",
         "+15% projectile speed.",
@@ -145,9 +176,13 @@ object Aug {
         "Pickups top up your overdrive meter.",
         "Raises the main gun ceiling, and one level right now.",
         "+0.35s of mercy after taking a hit.",
-        "+40% gem drops, and they are worth more."
+        "+40% gem drops, and they are worth more.",
+        "+14% damage while you are moving at speed.",
+        "Taking a hit leaves you furious: +25% damage and fire rate for 5s.",
+        "+20% longer overdrive, and it charges 20% faster.",
+        "Main gun hits set the target alight.",
+        "A spent shield grows back on its own."
     )
-
     fun isAbility(id: Int): Boolean = id < ABILITIES
 
     fun tierName(id: Int, level: Int, branch: Int): String = when {
@@ -172,6 +207,9 @@ object Aug {
             WING -> "Level $nextLevel: wingmen fire faster."
             VORTEX -> "Level $nextLevel: wider pull, harder bite."
             SENTINEL -> "Level $nextLevel: the turret lasts longer."
+            CHRONO -> "Level $nextLevel: a wider field, and a deeper crawl."
+            RICOCHET -> "Level $nextLevel: the orb hits harder and lives longer."
+            FRACTURE -> "Level $nextLevel: ${nextLevel + 2} shards, each one meaner."
             else -> "Level $nextLevel: bigger blast, shorter fuse."
         }
     }
@@ -235,6 +273,22 @@ class Loadout {
     fun maxWeapon(): Int = 5 + lvl[Aug.HARDPOINT]
     fun mercyBonus(): Float = 0.35f * lvl[Aug.EVASION]
     fun gemBonus(): Float = 0.40f * lvl[Aug.BOUNTY]
+
+    /** Damage multiplier at full throttle; scales with how hard you are moving. */
+    fun momentumBonus(): Float = 0.14f * lvl[Aug.MOMENTUM]
+    fun revengeSeconds(): Float = if (lvl[Aug.VENGEANCE] > 0) 5f else 0f
+    fun revengeMul(): Float = 1f + 0.25f * lvl[Aug.VENGEANCE]
+    fun overdriveSeconds(): Float = 1f + 0.20f * lvl[Aug.OVERCLOCK]
+    fun overdriveCharge(): Float = 1f + 0.20f * lvl[Aug.OVERCLOCK]
+    /** Damage per second an ignited enemy takes; zero when the module is absent. */
+    fun burnDps(): Float = if (lvl[Aug.AFTERBURN] > 0) 3f + 2.5f * lvl[Aug.AFTERBURN] else 0f
+    /** Seconds to regrow one spent shield pip, or zero when never. */
+    fun shieldRegen(): Float = when (lvl[Aug.RECOVERY]) {
+        0 -> 0f
+        1 -> 24f
+        2 -> 17f
+        else -> 12f
+    }
 
     // -------------------------------------------------------------- cards
 

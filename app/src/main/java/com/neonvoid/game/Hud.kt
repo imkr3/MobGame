@@ -45,6 +45,11 @@ fun formatScore(n: Int): String {
 /** All chrome: in-run HUD, title screen, pause and game-over panels. */
 class Hud(private val prefs: Prefs) {
 
+    private companion object {
+        /** Vertical pitch of the level-select grid. */
+        const val LEVEL_ROW = 100f
+    }
+
     val play = Button("PLAY", Palette.CYAN)
     val haptic = Button("HAPTICS ON", Palette.VIOLET)
     val pause = Button("", Palette.DIM)
@@ -71,6 +76,9 @@ class Hud(private val prefs: Prefs) {
     /** Digits 0-9, then dot, then backspace. */
     val keypad = Array(12) { Button("", Palette.SKY) }
     val shipCells = Array(ShipDex.list.size) { Button("", Palette.DIM) }
+    val levels = Button("LEVELS", Palette.MAGENTA)
+    val launch = Button("LAUNCH", Palette.CYAN)
+    val levelCells = Array(Levels.list.size) { Button("", Palette.DIM) }
 
     /** One offered augment: its card geometry, hit target and pre-wrapped copy. */
     class CardView {
@@ -100,13 +108,27 @@ class Hud(private val prefs: Prefs) {
 
         val cx = w * 0.5f
         val menuTop = h * 0.545f
-        play.place(cx, menuTop, w * 0.62f, 60f)
+        play.place(cx, menuTop, w * 0.62f, 56f)
+        levels.place(cx, menuTop + 62f, w * 0.62f, 44f)
         val halfW = w * 0.305f
-        hangar.place(cx - halfW / 2 - 5f, menuTop + 72f, halfW, 48f)
-        shop.place(cx + halfW / 2 + 5f, menuTop + 72f, halfW, 48f)
-        val halfW2 = w * 0.305f
-        records.place(cx - halfW2 / 2 - 5f, menuTop + 128f, halfW2, 42f)
-        coop.place(cx + halfW2 / 2 + 5f, menuTop + 128f, halfW2, 42f)
+        hangar.place(cx - halfW / 2 - 5f, menuTop + 114f, halfW, 44f)
+        shop.place(cx + halfW / 2 + 5f, menuTop + 114f, halfW, 44f)
+        records.place(cx - halfW / 2 - 5f, menuTop + 162f, halfW, 40f)
+        coop.place(cx + halfW / 2 + 5f, menuTop + 162f, halfW, 40f)
+
+        // level select: two columns of cards, launch button under them
+        val cardW = w * 0.44f
+        val gridTop = h * 0.19f
+        for (i in levelCells.indices) {
+            levelCells[i].place(
+                cx + (if (i % 2 == 0) -1f else 1f) * (cardW * 0.5f + 6f),
+                gridTop + (i / 2) * LEVEL_ROW,
+                cardW, 88f
+            )
+        }
+        // hung off the grid rather than the screen, so it never drifts away
+        // from the last row on tall phones
+        launch.place(cx, gridTop + 4 * LEVEL_ROW + 100f, w * 0.52f, 54f)
 
         hostGame.place(cx, h * 0.34f, w * 0.62f, 58f)
         joinGame.place(cx, h * 0.34f + 76f, w * 0.62f, 58f)
@@ -118,9 +140,9 @@ class Hud(private val prefs: Prefs) {
             keypad[i].place(cx + (col - 1) * (w * 0.22f), h * 0.40f + row * 60f, w * 0.20f, 52f)
         }
         val tw = w * 0.185f
-        music.place(cx - tw - 8f, menuTop + 182f, tw, 38f)
-        sfx.place(cx, menuTop + 182f, tw, 38f)
-        haptic.place(cx + tw + 8f, menuTop + 182f, tw, 38f)
+        music.place(cx - tw - 8f, menuTop + 214f, tw, 36f)
+        sfx.place(cx, menuTop + 214f, tw, 36f)
+        haptic.place(cx + tw + 8f, menuTop + 214f, tw, 36f)
 
         summon.place(cx - w * 0.16f, h * 0.795f, w * 0.30f, 54f)
         summon10.place(cx + w * 0.16f, h * 0.795f, w * 0.30f, 54f)
@@ -197,7 +219,7 @@ class Hud(private val prefs: Prefs) {
         }
 
         // wave + where you are + what clearing it buys you
-        val sector = Levels.forWave(world.wave.coerceAtLeast(1))
+        val sector = world.theme(world.wave.coerceAtLeast(1))
         Neon.label(c, "WAVE ${world.wave}", w * 0.5f, top + 26f, 18f, Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.22f)
         if (!world.bossPresent()) {
             Neon.label(c, sector.name, w * 0.5f, top + 42f, 11f, fade(sector.accent, 0.8f), Paint.Align.CENTER, 0.4f, 0.3f)
@@ -333,7 +355,11 @@ class Hud(private val prefs: Prefs) {
         sfx.label = "SFX"
         sfx.color = if (prefs.sfxOn) Palette.VIOLET else Palette.DIM
         hangar.label = "HANGAR"
+        var open = 0
+        for (i in Levels.list.indices) if (Levels.unlocked(i, prefs)) open++
+        levels.label = "LEVELS  $open/${Levels.list.size}"
         drawButton(c, play, time, true)
+        drawButton(c, levels, time)
         drawButton(c, hangar, time)
         drawButton(c, shop, time)
         drawButton(c, records, time)
@@ -342,9 +368,14 @@ class Hud(private val prefs: Prefs) {
         drawButton(c, sfx, time)
         drawButton(c, haptic, time)
 
+        val start = Levels.list[prefs.startLevel.coerceIn(0, Levels.list.size - 1)]
         Neon.label(
-            c, "FLYING  ${ShipDex.byId(prefs.selectedShip).name}", cx, menuTop + 158f, 11f,
+            c, "FLYING  ${ShipDex.byId(prefs.selectedShip).name}", cx, menuTop + 246f, 11f,
             ShipDex.byId(prefs.selectedShip).color, Paint.Align.CENTER, 0.4f, 0.2f, Neon.FONT_BODY
+        )
+        Neon.label(
+            c, "LAUNCHING FROM  ${start.name}", cx, menuTop + 262f, 11f,
+            fade(start.accent, 0.9f), Paint.Align.CENTER, 0.4f, 0.2f, Neon.FONT_BODY
         )
 
         val statY = h * 0.845f
@@ -364,7 +395,10 @@ class Hud(private val prefs: Prefs) {
         drawButton(c, quit, time)
     }
 
-    fun drawGameOver(c: Canvas, world: World, newBest: Boolean, time: Float) {
+    fun drawGameOver(
+        c: Canvas, world: World, newBest: Boolean, time: Float,
+        unlocked: List<Int> = emptyList()
+    ) {
         Neon.fillRect(c, 0f, 0f, w, h, 0xE005020C.toInt())
         val cx = w * 0.5f
         Neon.label(c, "SIGNAL LOST", cx, h * 0.24f, 44f, Palette.RED, Paint.Align.CENTER, 1f, 0.24f)
@@ -383,6 +417,17 @@ class Hud(private val prefs: Prefs) {
         statCell(c, cx + w * 0.26f, rowY, "COMBO", "x${world.maxCombo}", Palette.MAGENTA)
 
         Neon.label(c, "BEST  ${formatScore(prefs.bestScore)}", cx, h * 0.575f, 16f, Palette.AMBER, Paint.Align.CENTER, 0.6f, 0.16f, Neon.FONT_NUM)
+
+        if (unlocked.isNotEmpty()) {
+            val a = 0.6f + 0.4f * sin(time * 5f)
+            Neon.label(c, "SECTOR UNLOCKED", cx, h * 0.615f, 13f, fade(Palette.LIME, a), Paint.Align.CENTER, 0.6f, 0.34f)
+            var y = h * 0.615f + 20f
+            for (i in unlocked.take(3)) {
+                val theme = Levels.list[i]
+                Neon.label(c, "${i + 1}. ${theme.name}", cx, y, 15f, theme.accent, Paint.Align.CENTER, 0.6f, 0.12f)
+                y += 19f
+            }
+        }
 
         drawButton(c, retry, time, true)
         drawButton(c, toMenu, time)
@@ -628,6 +673,99 @@ class Hud(private val prefs: Prefs) {
                 fade(col, if (seen) 0.95f else 0.35f), Paint.Align.LEFT, 0.3f, 0.08f, Neon.FONT_BODY)
         }
         drawButton(c, back, time)
+    }
+
+    /**
+     * Level select. Every sector is listed from the start so the run ahead is
+     * visible; the locked ones show what they are waiting for rather than
+     * hiding behind a blank.
+     */
+    fun drawLevels(c: Canvas, selected: Int, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xF203010A.toInt())
+        val cx = w * 0.5f
+        Neon.label(c, "SECTORS", cx, h * 0.075f, 34f, Palette.MAGENTA, Paint.Align.CENTER, 1f, 0.3f)
+        Neon.label(
+            c, "PICK WHERE THE RUN BEGINS - IT NEVER GETS EASIER", cx, h * 0.075f + 22f, 10.5f,
+            Palette.DIM, Paint.Align.CENTER, 0.25f, 0.14f, Neon.FONT_BODY
+        )
+
+        for (i in levelCells.indices) {
+            val theme = Levels.list[i]
+            val b = levelCells[i]
+            val open = Levels.unlocked(i, prefs)
+            val chosen = open && i == selected
+            b.enabled = open
+            val l = b.cx - b.w / 2
+            val t = b.cy - b.h / 2
+            val r = b.cx + b.w / 2
+            val bot = b.cy + b.h / 2
+            val edge = if (open) theme.accent else Palette.DIM
+            val glow = when {
+                b.pressed -> 0.30f
+                chosen -> 0.20f
+                open -> 0.07f
+                else -> 0.04f
+            }
+            Neon.panel(
+                c, l, t, r, bot, 12f, fade(theme.accent, glow),
+                fade(edge, if (chosen) 1f else if (open) 0.7f else 0.3f),
+                if (chosen) 2.4f else 1.6f, if (open) 0.9f else 0.25f
+            )
+            Neon.label(
+                c, "0${i + 1}".takeLast(2), l + 12f, t + 26f, 17f,
+                fade(edge, if (open) 0.95f else 0.4f), Paint.Align.LEFT, 0.5f, 0.06f, Neon.FONT_NUM
+            )
+            Neon.label(
+                c, theme.name, l + 44f, t + 25f, 14f,
+                fade(theme.accent, if (open) 1f else 0.3f), Paint.Align.LEFT, if (open) 0.6f else 0.2f, 0.06f
+            )
+            if (open) {
+                Neon.label(
+                    c, theme.subtitle, l + 44f, t + 40f, 9.5f, Palette.DIM,
+                    Paint.Align.LEFT, 0.25f, 0.06f, Neon.FONT_BODY
+                )
+                Neon.label(
+                    c, "${theme.roster.size} ENEMY TYPES", l + 12f, bot - 28f, 9.5f,
+                    fade(theme.accent, 0.55f), Paint.Align.LEFT, 0.2f, 0.08f, Neon.FONT_BODY
+                )
+                Neon.label(
+                    c, theme.bossPool.joinToString("  ") { BT.names[it] }, l + 12f, bot - 14f, 9.5f,
+                    fade(Palette.RED, 0.6f), Paint.Align.LEFT, 0.2f, 0.08f, Neon.FONT_BODY
+                )
+                if (chosen) {
+                    Neon.label(
+                        c, "SELECTED", r - 12f, bot - 14f, 9.5f, Palette.WHITE,
+                        Paint.Align.RIGHT, 0.45f, 0.22f, Neon.FONT_BODY
+                    )
+                }
+            } else {
+                lockIcon(c, r - 20f, t + 21f, fade(Palette.DIM, 0.7f))
+                Neon.label(
+                    c, "LOCKED", l + 44f, t + 40f, 9.5f, Palette.DIM,
+                    Paint.Align.LEFT, 0.25f, 0.22f, Neon.FONT_BODY
+                )
+                Neon.label(
+                    c, Levels.requirement(i), l + 12f, bot - 16f, 11f, fade(Palette.AMBER, 0.8f),
+                    Paint.Align.LEFT, 0.35f, 0.06f, Neon.FONT_BODY
+                )
+            }
+        }
+
+        val picked = Levels.list[selected.coerceIn(0, Levels.list.size - 1)]
+        launch.label = "LAUNCH"
+        launch.color = picked.accent
+        drawButton(c, launch, time, true)
+        Neon.label(
+            c, "BEGINS AT WAVE 1 OF ${picked.name}", cx, launch.cy + 44f, 10.5f,
+            Palette.DIM, Paint.Align.CENTER, 0.25f, 0.14f, Neon.FONT_BODY
+        )
+        drawButton(c, back, time)
+    }
+
+    private fun lockIcon(c: Canvas, x: Float, y: Float, color: Int) {
+        // shackle first, then the body covers its lower half
+        Neon.ring(c, x, y - 1f, 4.2f, color, 1.8f, 0.4f)
+        Neon.fillRect(c, x - 6f, y - 1f, x + 6f, y + 8f, color)
     }
 
     fun drawReveal(c: Canvas, ship: Ship, isNew: Boolean, refund: Int, time: Float) {

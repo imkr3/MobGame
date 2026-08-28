@@ -292,7 +292,7 @@ class CoopClient {
         unackedDx = 0f
         unackedDy = 0f
         val err = len(p.x - localX, p.y - localY)
-        if (err > 110f) {
+        if (err > 60f) {
             localX = p.x; localY = p.y      // way out of step: snap rather than drift
         } else {
             localX += (p.x - localX) * 0.25f

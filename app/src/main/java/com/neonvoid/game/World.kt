@@ -23,6 +23,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     companion object {
         const val ENEMY_CAP = 56
         const val BULLET_CAP = 620
+
+        /** Seconds a boss fight runs at full toughness before it starts giving. */
+        const val BOSS_PATIENCE = 60f
         const val GRAZE_R = 26f
         const val OD_DURATION = 3.2f
         const val COMBO_WINDOW = 3.2f
@@ -45,6 +48,25 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     var ship: Ship
         get() = slots[0].ship
         set(v) { slots[0].ship = v }
+
+    /**
+     * Which themed level the run begins in, zero-based. Difficulty still comes
+     * from the wave number alone; this only picks where the tour starts.
+     */
+    var levelOffset = 0
+
+    fun themeIndex(wave: Int): Int =
+        (levelOffset + Levels.index(wave)) % Levels.list.size
+
+    fun theme(wave: Int): LevelTheme = Levels.list[themeIndex(wave)]
+
+    fun levelNumber(wave: Int): Int = themeIndex(wave) + 1
+
+    fun bossTypeFor(wave: Int): Int {
+        val t = theme(wave)
+        val within = ((wave - 1) % Levels.WAVES_PER_LEVEL) / 5
+        return t.bossPool[within % t.bossPool.size]
+    }
 
     /** Permanent shop bonuses; set before [reset]. */
     var meta: Meta
@@ -198,7 +220,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     fun triggerOverdrive(slotIndex: Int): Boolean {
         if (!canOverdrive(slotIndex)) return false
         val p = slots[slotIndex].player
-        p.odTime = OD_DURATION
+        p.odTime = OD_DURATION * slots[slotIndex].loadout.overdriveSeconds()
         p.overdrive = 0f
         val gained = clearHostileBullets(true)
         fx.shockwave(p.x, p.y, w * 1.3f, Palette.AMBER, 0.6f, 5f)
@@ -276,6 +298,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         b.life = 6f; b.grazed = false
         b.pierce = 0; b.hitCd = 0f; b.homing = false; b.turn = 0f; b.target = -1; b.splash = 0f
         b.fuse = 0f; b.shrapnel = 0
+        b.dwell = 0f; b.fracture = 0; b.shardDamage = 0; b.shardHoming = false; b.burn = 0f
         return b
     }
 
@@ -288,6 +311,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val b = fire(x, y, vx, vy, r, damage, false, color, style)
         b.pierce = 0; b.hitCd = 0f; b.homing = false; b.turn = 0f; b.target = -1; b.splash = 0f
         b.fuse = 0f; b.shrapnel = 0
+        b.dwell = 0f; b.fracture = 0; b.shardDamage = 0; b.shardHoming = false; b.burn = 0f
         return b
     }
 
@@ -323,6 +347,57 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         fx.burst(b.x, b.y, 16, Palette.AMBER, 320f, 2.6f, 0.5f, true)
         fx.shake(0.12f)
         b.active = false
+    }
+
+    /** FRACTURE: a landed shot throws its shards outward. */
+    internal fun shatter(b: Bullet) {
+        val n = b.fracture
+        if (n <= 0) return
+        val off = rnd(TAU)
+        val dmg = b.shardDamage.coerceAtLeast(1)
+        for (i in 0 until n) {
+            val a = off + i * TAU / n + rnd(-0.12f, 0.12f)
+            val sh = allyBullet(b.x, b.y, cos(a) * 430f, sin(a) * 430f, 2.8f, dmg, Palette.ROSE, 0)
+            if (b.shardHoming) {
+                sh.homing = true
+                sh.turn = 6f
+                sh.life = 1.2f
+            } else {
+                sh.life = 0.42f
+            }
+        }
+        fx.burst(b.x, b.y, 5, Palette.ROSE, 230f, 2f, 0.26f)
+        b.active = false
+    }
+
+    /** STASIS: a shot held long enough dissolves and pays out. */
+    internal fun bankBullet(b: Bullet) {
+        b.active = false
+        score += (14 * multiplier).toInt()
+        fx.popText(b.x, b.y, "+${(14 * multiplier).toInt()}", Palette.WHITE, 13f, 0.5f)
+        fx.burst(b.x, b.y, 4, Palette.WHITE, 150f, 1.8f, 0.3f)
+    }
+
+    /** BACKLASH: a shot caught in the time field turns and flies home. */
+    internal fun reflectBullet(b: Bullet, damage: Int) {
+        b.hostile = false
+        b.dwell = 0f
+        b.grazed = true                 // it already paid out on the way in
+        b.color = Palette.SKY
+        b.damage = damage
+        b.life = 3f
+        val speed = len(b.vx, b.vy).coerceAtLeast(240f) * 1.7f
+        val ti = arsenal.nearestEnemy(this, b.x, b.y)
+        if (ti >= 0) {
+            val e = enemies[ti]
+            val a = atan2(e.y - b.y, e.x - b.x)
+            b.vx = cos(a) * speed
+            b.vy = sin(a) * speed
+        } else {
+            b.vx = -b.vx * 1.7f
+            b.vy = -b.vy * 1.7f
+        }
+        fx.burst(b.x, b.y, 5, Palette.SKY, 200f, 2f, 0.3f)
     }
 
     internal fun missile(x: Float, y: Float, vx: Float, vy: Float, r: Float, damage: Int, color: Int): Bullet {
@@ -398,6 +473,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         e.link = -1
         e.telegraph = 0f
         e.elite = false
+        e.burn = 0f
+        e.burnDps = 0f
         when (kind) {
             EK.DRIFTER -> {
                 e.r = 16f; e.hp = 4f * hpMul; e.vy = 96f * speedMul
@@ -503,8 +580,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 }
             }
             EK.BOSS -> {
-                val theme = Levels.forWave(wave)
-                val bossType = Levels.bossFor(wave)
+                val theme = theme(wave)
+                val bossType = bossTypeFor(wave)
                 e.bossType = bossType
                 val typeMul = when (bossType) {
                     BT.WARDEN -> 0.92f
@@ -514,12 +591,10 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                     else -> 1f
                 }
                 e.r = if (bossType == BT.FORGE) 58f else 52f
-                // quadratic term is what stops a maxed loadout melting late bosses;
-                // the tier bonus stays modest so deep loops do not become a slog
-                // The quadratic is what stops a maxed loadout melting late bosses,
-                // but it is capped so very deep runs do not hit a wall of health.
-                val quad = minOf(wave.toFloat() * wave, 3600f) * 1.9f
-                e.hp = (120f + wave * 42f + quad) * typeMul * (1f + Levels.tier(wave) * 0.35f)
+                // Bosses are the wall of the run: a big flat base, a steep linear
+                // climb and a capped quadratic on top so late fights stay fights.
+                val quad = minOf(wave.toFloat() * wave, 3600f) * 2.6f
+                e.hp = (185f + wave * 70f + quad) * typeMul * (1f + Levels.tier(wave) * 0.4f)
                 e.vy = 90f
                 e.holdY = h * 0.20f
                 e.fireEvery = 1f
@@ -555,7 +630,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         script.clear()
         scriptIdx = 0
         waveT = 0f
-        val sector = Levels.forWave(n)
+        val sector = theme(n)
         val tier = Levels.tier(n)
         // linear early, quadratic late: the opening stays readable while a
         // fully-augmented ship still meets something that can kill it
@@ -681,7 +756,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         wave = n
         buildWave(n)
         awaitingNextWave = false
-        val theme = Levels.forWave(n)
+        val theme = theme(n)
         when {
             // A finished level is a milestone, not a stopping point - the run
             // rolls straight on into the next theme.
@@ -700,7 +775,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             }
             Levels.isBossWave(n) -> {
                 banner = "WARNING"
-                bannerSub = Levels.bossName(n)
+                bannerSub = BT.names[bossTypeFor(n)]
                 bannerT = 2.4f
                 fx.flash(Palette.RED, 0.3f)
                 sound?.sfx(Sfx.WARN)
@@ -806,6 +881,20 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         player.thrust = approach(player.thrust, clamp(abs(vx) / 300f, 0f, 1f), 0.2f, dt)
 
         if (player.invuln > 0f) player.invuln -= dt
+        if (player.revenge > 0f) player.revenge -= dt
+        val regen = loadout.shieldRegen()
+        if (regen > 0f && player.shield < loadout.maxShield()) {
+            player.regenT -= dt
+            if (player.regenT <= 0f) {
+                player.shield++
+                player.regenT = regen
+                fx.shockwave(player.x, player.y, 70f, Palette.LIME, 0.4f, 2f)
+                fx.popText(player.x, player.y - 46f, "SHIELD", Palette.LIME, 16f)
+                sound?.sfx(Sfx.POWERUP)
+            }
+        } else {
+            player.regenT = regen
+        }
         if (player.odTime > 0f) {
             player.odTime -= dt
             if (player.odTime <= 0f) {
@@ -829,6 +918,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             }
             base *= loadout.fireIntervalMul() * ship.fireMul
             if (loadout.branch[Aug.SPREAD] == Aug.A) base *= 0.82f
+            if (player.revenge > 0f) base /= loadout.revengeMul()
             player.fireT = base * (if (player.odTime > 0f) 0.55f else 1f)
         }
     }
@@ -844,6 +934,25 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         if (loadout.critChance() > 0f && chance(loadout.critChance())) d *= 2
         val b = fireAngle(player.x + offX, player.y + offY, a, speed, r, d, false, color, 1)
         b.pierce += loadout.extraPierce()
+        b.burn = loadout.burnDps()
+        val fl = loadout.lvl[Aug.FRACTURE]
+        if (fl > 0) {
+            when (loadout.branch[Aug.FRACTURE]) {
+                Aug.A -> {                                   // SHATTER: a wall of glass
+                    b.fracture = 6 + fl
+                    b.shardDamage = 2 + fl
+                }
+                Aug.B -> {                                   // RUPTURE: few, heavy, seeking
+                    b.fracture = 3
+                    b.shardDamage = 4 + 2 * fl
+                    b.shardHoming = true
+                }
+                else -> {
+                    b.fracture = 2 + fl
+                    b.shardDamage = 1 + fl
+                }
+            }
+        }
         return b
     }
 
@@ -852,7 +961,11 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val loadout = s.loadout
         val ship = s.ship
         val od = player.odTime > 0f
-        val d = (if (od) 4 else 2) + loadout.damageBonus() + ship.damageBonus
+        var d = (if (od) 4 else 2) + loadout.damageBonus() + ship.damageBonus
+        // MOMENTUM rewards flying hard; VENGEANCE rewards having just been hit
+        val fury = (1f + loadout.momentumBonus() * player.thrust) *
+            (if (player.revenge > 0f) loadout.revengeMul() else 1f)
+        if (fury > 1f) d = (d * fury + 0.5f).toInt()
         when (player.weapon) {
             1 -> playerShot(s, 0f, -14f, 0f, 4.4f, d)
             2 -> { playerShot(s, -7f, -12f, 0f, 4f, d); playerShot(s, 7f, -12f, 0f, 4f, d) }
@@ -999,6 +1112,15 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             if (e.hitFlash > 0f) e.hitFlash -= dt
 
             if (e.telegraph > 0f && e.kind != EK.LANCER) e.telegraph = 0f
+            if (e.burn > 0f) {
+                e.burn -= dt
+                if (chance(dt * 14f)) {
+                    fx.burst(e.x + rnd(-e.r, e.r), e.y + rnd(-e.r, e.r), 1, Palette.RED, 60f, 1.6f, 0.4f)
+                }
+                hit(e, e.burnDps * dt, e.x, e.y, false)
+                if (!e.active) continue
+                if (e.burn <= 0f) e.burnDps = 0f
+            }
             EnemyAI.update(this, e, dt)
 
             if (e.kind != EK.BOSS && (e.y > h + 90f || e.x < -160f || e.x > w + 160f || e.y < -260f)) {
@@ -1084,9 +1206,18 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                         fx.burst(b.x, b.y, 4, Palette.AMBER, 190f, 2f, 0.28f)
                         break
                     }
+                    if (b.burn > 0f && e.active) {
+                        e.burn = maxOf(e.burn, 2.6f)
+                        e.burnDps = maxOf(e.burnDps, b.burn)
+                    }
                     if (b.shrapnel > 0) {
                         hit(e, b.damage.toFloat(), b.x, b.y, true)
                         burstShell(b)
+                        break
+                    }
+                    if (b.fracture > 0) {
+                        hit(e, b.damage.toFloat(), b.x, b.y, true)
+                        shatter(b)
                         break
                     }
                     if (b.splash > 0f) detonate(b)
@@ -1129,7 +1260,10 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 fx.burst(b.x, b.y, 4, Palette.AMBER, 150f, 2f, 0.3f)
             } else if (!b.grazed && d2 <= GRAZE_R * GRAZE_R) {
                 b.grazed = true
-                player.overdrive = clamp(player.overdrive + loadout.grazeCharge() * ship.grazeMul, 0f, 1f)
+                player.overdrive = clamp(
+                    player.overdrive + loadout.grazeCharge() * ship.grazeMul * loadout.overdriveCharge(),
+                    0f, 1f
+                )
                 score += (15 * scoreMultiplier()).toInt()
                 fx.cone(b.x, b.y, 2, atan2(-dy, -dx), 0.8f, Palette.CYAN, 140f, 1.6f, 0.25f)
             }
@@ -1217,11 +1351,24 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     }
 
     internal fun hit(e: Enemy, dmg: Float, hx: Float, hy: Float, spark: Boolean = true) {
-        e.hp -= dmg
+        // Bosses are meant to be a wall, not a wall you can be stuck against:
+        // past a minute the fight starts giving, so a weak build still ends it.
+        val impatience =
+            if (e.kind == EK.BOSS && e.t > BOSS_PATIENCE) 1f + minOf((e.t - BOSS_PATIENCE) * 0.02f, 1.5f)
+            else 1f
+        e.hp -= dmg * impatience
         e.hitFlash = 0.12f
         if (spark) fx.cone(hx, hy, 3, -TAU * 0.25f + rnd(-0.6f, 0.6f), 0.9f, Palette.WHITE, 170f, 1.8f, 0.22f)
         if (e.hp > 0f) return
         killEnemy(e)
+    }
+
+    /** Damage everything inside a radius, without the warhead's fanfare. */
+    internal fun splashDamage(x: Float, y: Float, radius: Float, dmg: Float) {
+        for (e in enemies) {
+            if (!e.active) continue
+            if (len(e.x - x, e.y - y) <= radius + e.r) hit(e, dmg, e.x, e.y, false)
+        }
     }
 
     /** Warhead blast: everything inside the radius takes a share. */
@@ -1327,6 +1474,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     private fun hurtPlayer(s: PlayerSlot) {
         val player = s.player
         val loadout = s.loadout
+        player.revenge = loadout.revengeSeconds()
         if (player.shield > 0) {
             player.shield--
             player.invuln = 1.4f + loadout.mercyBonus()
@@ -1456,7 +1604,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             e.x = s.enemyX[i]; e.y = s.enemyY[i]; e.r = s.enemyR[i]
             e.kind = s.enemyKind[i]; e.angle = s.enemyAngle[i]
             e.hitFlash = s.enemyFlash[i]; e.elite = s.enemyElite[i]; e.color = s.enemyColor[i]
-            e.link = -1; e.telegraph = 0f
+            e.link = -1; e.telegraph = 0f; e.burn = 0f; e.burnDps = 0f
         }
         for (u in pickups) u.active = false
         for (i in 0 until minOf(s.pickupCount, pickups.size)) {

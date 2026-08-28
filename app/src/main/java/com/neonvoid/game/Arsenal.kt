@@ -41,6 +41,21 @@ class Vortex {
     var damage = 0f
 }
 
+/** A heavy shot that ricochets around the arena instead of leaving it. */
+class Orb {
+    var active = false
+    var x = 0f; var y = 0f
+    var vx = 0f; var vy = 0f
+    var r = 12f
+    var life = 0f; var maxLife = 6f
+    var damage = 6f
+    var hitCd = 0f
+    var explodes = false
+    var blast = 0f
+    var color = Palette.LIME
+    var spin = 0f
+}
+
 /** A deployed gun that holds position and fires up the screen. */
 class Turret {
     var active = false
@@ -78,6 +93,7 @@ class Arsenal(private val fx: Fx) {
     private val nodeCd = FloatArray(6)
     private val vortices = Array(4) { Vortex() }
     private val turrets = Array(4) { Turret() }
+    private val orbs = Array(6) { Orb() }
 
     private var lanceT = 0f
     private var swarmT = 0f
@@ -88,6 +104,10 @@ class Arsenal(private val fx: Fx) {
     private var wingT = 0f
     private var vortexT = 0f
     private var sentinelT = 0f
+    private var ricochetT = 0f
+    /** Radius of the live CHRONO field, or zero when it is not running. */
+    var chronoR = 0f
+        private set
     private var tetherIdx = -1
     private var tetherTick = 0f
     var orbitAngle = 0f
@@ -100,9 +120,11 @@ class Arsenal(private val fx: Fx) {
         nodeCd.fill(0f)
         lanceT = 2.5f; swarmT = 1.2f; arcT = 1.4f; pulseT = 4f; sentryT = 0.9f
         flakT = 1.6f; wingT = 0.5f; tetherIdx = -1; tetherTick = 0f
-        vortexT = 3f; sentinelT = 2.5f
+        vortexT = 3f; sentinelT = 2.5f; ricochetT = 1.4f
+        chronoR = 0f
         for (v in vortices) v.active = false
         for (t in turrets) t.active = false
+        for (o in orbs) o.active = false
         orbitAngle = 0f
     }
 
@@ -148,8 +170,162 @@ class Arsenal(private val fx: Fx) {
         if (lo.has(Aug.WING)) tickWing(dt, world)
         if (lo.has(Aug.VORTEX)) tickVortex(dt, world)
         if (lo.has(Aug.SENTINEL)) tickSentinel(dt, world)
+        if (lo.has(Aug.CHRONO)) tickChrono(dt, world) else chronoR = 0f
+        if (lo.has(Aug.RICOCHET)) tickRicochet(dt, world)
         updateVortices(dt, world)
         updateTurrets(dt, world)
+        updateOrbs(dt, world)
+    }
+
+    // -------------------------------------------------------------- CHRONO
+
+    /**
+     * A bubble of dilated time around the ship. Rather than tracking a velocity
+     * scale per bullet, each frame drags whatever is inside back along a slice
+     * of the step it just took - the same result, and it survives bullets being
+     * recycled underneath us.
+     */
+    private fun tickChrono(dt: Float, world: World) {
+        val lo = slot.loadout
+        val p = slot.player
+        val l = lo.lvl[Aug.CHRONO]
+        val br = lo.branch[Aug.CHRONO]
+        val r = when (br) {
+            Aug.A -> 150f + 14f * l
+            Aug.B -> 116f + 11f * l
+            else -> 86f + 13f * l
+        }
+        val slow = when (br) {
+            Aug.A -> clamp(0.60f + 0.05f * l, 0f, 0.94f)
+            Aug.B -> clamp(0.50f + 0.05f * l, 0f, 0.9f)
+            else -> clamp(0.28f + 0.07f * l, 0f, 0.85f)
+        }
+        chronoR = r
+        val reflect = 0.85f - 0.06f * l
+        val payload = 6 + 4 * l
+        for (b in world.bullets) {
+            if (!b.active || !b.hostile) continue
+            if (len(b.x - p.x, b.y - p.y) > r + b.r) {
+                b.dwell = 0f
+                continue
+            }
+            b.x -= b.vx * dt * slow
+            b.y -= b.vy * dt * slow
+            b.dwell += dt
+            when (br) {
+                // held long enough, the shot simply gives up and pays out
+                Aug.A -> if (b.dwell >= 2.0f) world.bankBullet(b)
+                Aug.B -> if (b.dwell >= reflect) world.reflectBullet(b, payload)
+            }
+        }
+        if (br == Aug.A) {
+            // STASIS also jams triggers: nothing caught in the field can shoot
+            for (e in world.enemies) {
+                if (!e.active) continue
+                if (len(e.x - p.x, e.y - p.y) > r + e.r) continue
+                if (e.fireT < 0.4f) e.fireT = 0.4f
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ RICOCHET
+
+    private fun tickRicochet(dt: Float, world: World) {
+        val lo = slot.loadout
+        val p = slot.player
+        val l = lo.lvl[Aug.RICOCHET]
+        val br = lo.branch[Aug.RICOCHET]
+        ricochetT -= dt
+        if (ricochetT > 0f) return
+        val count = if (br == Aug.A) 3 else 1
+        val live = orbs.count { it.active }
+        if (live >= (if (br == Aug.A) 5 else 2)) {
+            ricochetT = 0.6f
+            return
+        }
+        val bonus = lo.damageBonus() + slot.ship.damageBonus
+        for (i in 0 until count) {
+            val o = orbs.firstOrNull { !it.active } ?: break
+            val speed = when (br) {
+                Aug.A -> 560f
+                Aug.B -> 330f
+                else -> 430f + 14f * l
+            }
+            val a = -TAU * 0.25f + (i - (count - 1) * 0.5f) * 0.42f + rnd(-0.1f, 0.1f)
+            o.active = true
+            o.x = p.x; o.y = p.y - 18f
+            o.vx = cos(a) * speed
+            o.vy = sin(a) * speed
+            o.hitCd = 0f
+            o.spin = 0f
+            o.maxLife = when (br) {
+                Aug.A -> 5.5f
+                Aug.B -> 8f + 0.5f * (l - 3)
+                else -> 5f + 0.5f * l
+            }
+            o.life = o.maxLife
+            o.r = when (br) {
+                Aug.A -> 9f
+                Aug.B -> 20f
+                else -> 12f + l
+            }
+            o.damage = when (br) {
+                Aug.A -> 7f + 2f * l + bonus
+                Aug.B -> 16f + 5f * l + bonus
+                else -> 6f + 2.5f * l + bonus
+            }
+            o.explodes = br == Aug.B
+            o.blast = if (br == Aug.B) 78f + 6f * l else 0f
+            o.color = if (br == Aug.B) Palette.AMBER else Palette.LIME
+        }
+        ricochetT = cd(world, if (br == Aug.A) 3.6f else 4.4f - 0.2f * l)
+    }
+
+    private fun updateOrbs(dt: Float, world: World) {
+        for (o in orbs) {
+            if (!o.active) continue
+            o.life -= dt
+            if (o.life <= 0f) {
+                o.active = false
+                fx.burst(o.x, o.y, 10, o.color, 220f, 2.2f, 0.4f)
+                continue
+            }
+            if (o.hitCd > 0f) o.hitCd -= dt
+            o.spin += dt * 7f
+            o.x += o.vx * dt
+            o.y += o.vy * dt
+            var bounced = false
+            if (o.x < o.r) { o.x = o.r; o.vx = -o.vx; bounced = true }
+            if (o.x > world.w - o.r) { o.x = world.w - o.r; o.vx = -o.vx; bounced = true }
+            if (o.y < o.r + 40f) { o.y = o.r + 40f; o.vy = -o.vy; bounced = true }
+            if (o.y > world.h - o.r) { o.y = world.h - o.r; o.vy = -o.vy; bounced = true }
+            if (bounced) {
+                fx.burst(o.x, o.y, 6, o.color, 200f, 2f, 0.3f)
+                if (o.explodes) {
+                    fx.shockwave(o.x, o.y, o.blast, o.color, 0.4f, 3f)
+                    fx.shake(0.14f)
+                    world.splashDamage(o.x, o.y, o.blast, o.damage * 0.7f)
+                }
+            }
+            if (o.hitCd > 0f) continue
+            for (e in world.enemies) {
+                if (!e.active) continue
+                val rr = e.r + o.r
+                if (len(e.x - o.x, e.y - o.y) > rr) continue
+                world.hit(e, o.damage, o.x, o.y, true)
+                o.hitCd = 0.14f
+                // bounce off what it just mauled, so it keeps working the field
+                val a = atan2(o.y - e.y, o.x - e.x)
+                val sp = len(o.vx, o.vy)
+                o.vx = cos(a) * sp
+                o.vy = sin(a) * sp
+                if (o.explodes) {
+                    fx.shockwave(o.x, o.y, o.blast, o.color, 0.4f, 3f)
+                    world.splashDamage(o.x, o.y, o.blast, o.damage * 0.7f)
+                }
+                break
+            }
+        }
     }
 
     // -------------------------------------------------------------- VORTEX
@@ -746,6 +922,40 @@ class Arsenal(private val fx: Fx) {
             val t = n.life / n.maxLife
             Neon.ring(c, n.x, n.y, n.r, fade(n.color, t * 0.95f), 4.5f * t + 1f, 1.2f)
             Neon.ring(c, n.x, n.y, n.r * 0.82f, fade(Palette.WHITE, t * 0.45f), 2f * t + 0.5f, 0.8f)
+        }
+
+        // CHRONO field: a slow, breathing lens with a ticking rim
+        if (chronoR > 0f && p.alive) {
+            val br = lo.branch[Aug.CHRONO]
+            val col = if (br == Aug.B) Palette.SKY else Palette.WHITE
+            val breathe = 0.85f + 0.15f * sin(orbitAngle * 0.9f)
+            val r = chronoR * breathe
+            Neon.softDisc(c, p.x, p.y, r, fade(col, 0.07f))
+            Neon.ring(c, p.x, p.y, r, fade(col, 0.42f), 1.8f, 0.8f)
+            Neon.ring(c, p.x, p.y, r * 0.72f, fade(col, 0.16f), 1.1f, 0.4f)
+            for (i in 0 until 12) {
+                val a = orbitAngle * 0.35f + i * TAU / 12f
+                val x0 = p.x + cos(a) * r
+                val y0 = p.y + sin(a) * r
+                Neon.line(c, x0, y0, p.x + cos(a) * (r - 7f), p.y + sin(a) * (r - 7f), fade(col, 0.5f), 1.4f, 0.5f)
+            }
+        }
+
+        for (o in orbs) {
+            if (!o.active) continue
+            val t = clamp(o.life / o.maxLife, 0f, 1f)
+            val a = clamp(t * 3f, 0f, 1f)
+            Neon.softDisc(c, o.x, o.y, o.r * 2.1f, fade(o.color, 0.16f * a))
+            Neon.orb(c, o.x, o.y, o.r, fade(o.color, a), 1.4f)
+            Neon.ring(c, o.x, o.y, o.r * 1.5f, fade(Palette.WHITE, 0.45f * a), 1.6f, 0.8f)
+            for (i in 0 until 3) {
+                val ang = o.spin + i * TAU / 3f
+                Neon.line(
+                    c, o.x + cos(ang) * o.r * 1.1f, o.y + sin(ang) * o.r * 1.1f,
+                    o.x + cos(ang) * o.r * 1.9f, o.y + sin(ang) * o.r * 1.9f,
+                    fade(o.color, 0.7f * a), 1.6f, 0.7f
+                )
+            }
         }
 
         if (lo.branch[Aug.PULSE] == Aug.B && p.alive) {

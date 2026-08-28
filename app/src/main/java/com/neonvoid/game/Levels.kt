@@ -31,7 +31,37 @@ class LevelTheme(
     val musicKey: Int
 )
 
+/** What a level asks of you before it opens up. */
+class LevelReq(val text: String, val test: (Prefs) -> Boolean)
+
 object Levels {
+
+    /** Unlock conditions, in level order. The first is always open. */
+    val unlocks = arrayOf(
+        LevelReq("", { true }),
+        LevelReq("REACH WAVE 8", { it.bestWave >= 8 }),
+        LevelReq("REACH WAVE 16", { it.bestWave >= 16 }),
+        LevelReq("REACH WAVE 24", { it.bestWave >= 24 }),
+        LevelReq("SCORE 150,000", { it.bestScore >= 150_000 }),
+        LevelReq("CLEAR A LEVEL", { it.bestLevel >= 1 }),
+        LevelReq("1,500 TOTAL KILLS", { it.totalKills >= 1500 }),
+        LevelReq("REACH WAVE 45", { it.bestWave >= 45 }),
+        LevelReq("OWN 8 HULLS", { ShipDex.ownedCount(it.ownedShips) >= 8 }),
+        LevelReq("CLEAR 2 LEVELS", { it.bestLevel >= 2 })
+    )
+
+    fun unlocked(index: Int, prefs: Prefs): Boolean =
+        index in unlocks.indices && unlocks[index].test(prefs)
+
+    fun requirement(index: Int): String = unlocks.getOrNull(index)?.text ?: ""
+
+    /** Bitmask of every level currently open, so new unlocks can be spotted. */
+    fun unlockedMask(prefs: Prefs): Int {
+        var m = 0
+        for (i in unlocks.indices) if (unlocks[i].test(prefs)) m = m or (1 shl i)
+        return m
+    }
+
 
     /** Waves in one level. Bosses land every fifth wave, so seven per level. */
     const val WAVES_PER_LEVEL = 35

@@ -71,6 +71,11 @@ class Prefs(context: Context) {
         get() = sp.getString("last_host", "") ?: ""
         set(v) = sp.edit().putString("last_host", v).apply()
 
+    /** Level the next run launches from, as a zero-based theme index. */
+    var startLevel: Int
+        get() = sp.getInt("start_level", 0)
+        set(v) = sp.edit().putInt("start_level", v).apply()
+
     var hapticsOn: Boolean
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit().putBoolean("haptics", v).apply()

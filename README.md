@@ -11,18 +11,22 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
 <p align="center">
   <img src="docs/preview/hangar.png" width="32%" alt="Hangar" />
   <img src="docs/preview/shop.png" width="32%" alt="Shop" />
-  <img src="docs/preview/summon.png" width="32%" alt="Ten-pull" />
+  <img src="docs/preview/coop.png" width="32%" alt="Co-op lobby" />
 </p>
 <p align="center">
-  <img src="docs/preview/records.png" width="32%" alt="Records" />
+  <img src="docs/preview/sectors.png" width="32%" alt="Sector select" />
   <img src="docs/preview/abilities.png" width="32%" alt="Abilities in play" />
   <img src="docs/preview/boss.png" width="32%" alt="Boss fight" />
 </p>
+<p align="center">
+  <img src="docs/preview/records.png" width="32%" alt="Records" />
+  <img src="docs/preview/new-systems.png" width="32%" alt="Time field and ricochet orbs" />
+  <img src="docs/preview/summon.png" width="32%" alt="Ten-pull" />
+</p>
 
 <p align="center">
-  <img src="docs/preview/coop.png" width="32%" alt="Co-op lobby" />
-  <img src="docs/preview/coop-host.png" width="32%" alt="Hosting" />
-  <img src="docs/preview/coop-join.png" width="32%" alt="Joining" />
+  <img src="docs/preview/coop-host.png" width="48%" alt="Hosting" />
+  <img src="docs/preview/coop-join.png" width="48%" alt="Joining" />
 </p>
 
 <p align="center"><img src="docs/preview/levels.png" width="70%" alt="The ten level themes" /></p>
@@ -78,6 +82,31 @@ number, so the run keeps escalating straight through every theme change.
 Clearing a level is a milestone and a score bonus, never a stopping point: the
 next one starts immediately, and harder.
 
+**SECTORS**, on the main menu, is where levels open up. Every sector is listed
+from the first run so you can see what is ahead, but only the first is unlocked;
+the rest show what they are waiting for and open as you meet it. Pick an
+unlocked sector and the run *starts* there — its backdrop, its roster, its
+bosses and its music from wave 1 — and rolls on into the following sectors from
+that point. Because difficulty comes from the wave number alone, starting at
+THE HOLLOW is no harder than starting at NEON REACH; it just changes what you
+are looking at and shooting. The sector-select screen plays each sector's track
+while you browse it.
+
+| | Sector | Opens when |
+| --- | --- | --- |
+| 1 | NEON REACH | open from the start |
+| 2 | CRIMSON BELT | reach wave 8 |
+| 3 | VIOLET DEPTHS | reach wave 16 |
+| 4 | GOLD CIRCUIT | reach wave 24 |
+| 5 | VOID CORE | score 150,000 |
+| 6 | EMERALD DRIFT | clear a level |
+| 7 | ASH REACH | 1,500 total kills |
+| 8 | AZURE SPIRE | reach wave 45 |
+| 9 | ROSE NEBULA | own 8 hulls |
+| 10 | THE HOLLOW | clear 2 levels |
+
+Anything you unlock is announced on the game-over screen.
+
 | | Level | Cast |
 | --- | --- | --- |
 | 1 | **NEON REACH** | Drifters, weavers, chargers |
@@ -93,6 +122,15 @@ next one starts immediately, and harder.
 
 Each level draws its bosses from its own pool, so the seven boss fights inside a
 level vary and the mix differs between levels.
+
+Bosses arrive every fifth wave and they are a wall: a large flat base of health,
+a steep climb per wave and a capped quadratic on top, so a wave-40 fight is a
+genuine fight rather than a formality. They cycle their attack patterns faster
+the deeper you are, and call escorts from wave 5 onward. A phase change no
+longer wipes the bullets already in the air — the boss simply stops firing for
+the transition, so the screen clears on its own and what you dodged stays
+dodged. Past a minute in one fight the boss slowly starts giving, so a weak
+build is never stuck against an unkillable wall.
 
 Fifteen enemy types in all. Beyond the basics: **LANCER** holds a lane and
 telegraphs a column of fire, **ORBITER** circles a point firing along its
@@ -128,6 +166,9 @@ offers are level-ups of what you already carry. Early picks are commitments.
 | **WING** | Two wingmen fly your flanks and fire with you |
 | **VORTEX** | A singularity that drags everything nearby into it |
 | **SENTINEL** | Drops a turret that holds position and fires |
+| **CHRONO** | A time field around you drags enemy fire to a crawl |
+| **RICOCHET** | A heavy orb bounces around the arena, mauling what it meets |
+| **FRACTURE** | Your main gun shots shatter into shards on impact |
 
 The HUD shows `AUGMENTS n/8` above the lives, and the choice screen shows the
 bay state, so you always know how much room is left.
@@ -150,6 +191,9 @@ levelling to 5 down the path you chose.
 | WING | **ESCORT** — wingmen soak incoming fire | **STRIKE** — wingmen carry missiles |
 | VORTEX | **SINGULARITY** — wider pull, banks caught fire | **IMPLOSION** — collapses into a detonation |
 | SENTINEL | **BATTERY** — two turrets, firing faster | **MORTAR** — the turret lobs shells |
+| CHRONO | **STASIS** — a huge field that jams triggers; held fire pays out as score | **BACKLASH** — caught fire turns and flies back at them |
+| RICOCHET | **CAROM** — three fast orbs carving the screen | **DEMOLISHER** — one colossal orb detonating on every bounce |
+| FRACTURE | **SHATTER** — far more shards, thrown wider | **RUPTURE** — fewer, heavy shards that seek a target |
 
 **Stat modules** are the other half of the offer, repeatable and stackable:
 RAPID (fire rate), POWER (damage), VELOCITY (projectile speed), AGILITY
@@ -159,7 +203,14 @@ capacity), SALVAGE (score), REPAIR (hull), COOLANT (ability cooldowns), PIERCE
 (pickups top up overdrive), HARDPOINT (raises the main gun's ceiling), EVASION
 (a longer mercy window) and BOUNTY (more, richer gems).
 
-Twenty-seven augments in total, eleven of them abilities, for eight bay slots.
+Five of the modules are conditional rather than flat, and they reward how you
+fly: **MOMENTUM** (damage that scales with how hard you are moving),
+**VENGEANCE** (taking a hit leaves you furious — more damage and fire rate for
+five seconds), **OVERCLOCK** (longer overdrive, and it charges faster),
+**AFTERBURN** (main gun hits set the target alight) and **RECOVERY** (a spent
+shield grows back on its own).
+
+Thirty-five augments in total, fourteen of them abilities, for eight bay slots.
 
 Your current kit shows as badges above the lives counter, and in full on the
 pause screen.
@@ -337,7 +388,7 @@ validated headlessly here:
   crosses the wire, and pulling the partner's plug leaves the host flying solo
   rather than crashing. Local-ship prediction lands within 1.8 units of the host
   on average.
-- Every ability path forced and played: all 33 combinations (eleven abilities, base
+- Every ability path forced and played: all 42 combinations (fourteen abilities, base
   plus both evolutions) run 150 simulated seconds each without a crash, and land
   within a reasonable band of each other on wave reached and score.
 - The soundtrack rendered offline to WAV and checked for level, clipping and

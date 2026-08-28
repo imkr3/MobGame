@@ -27,7 +27,7 @@ class Game(context: Context) {
         const val UP = 2
     }
 
-    enum class State { MENU, PLAYING, PAUSED, GAME_OVER, AUGMENT, HANGAR, REVEAL, SHOP, RECORDS, COOP }
+    enum class State { MENU, PLAYING, PAUSED, GAME_OVER, AUGMENT, HANGAR, REVEAL, SHOP, RECORDS, COOP, LEVELS }
 
     val prefs = Prefs(context)
     private val haptics = Haptics(context).also { it.enabled = prefs.hapticsOn }
@@ -60,6 +60,9 @@ class Game(context: Context) {
     private var revealRefund = 0
     private var coresEarned = 0
     private var revealMulti: List<Ship> = emptyList()
+    /** Sectors that opened up during the run just finished. */
+    private var freshUnlocks: List<Int> = emptyList()
+    private var unlockMask = 0
 
     // ---- co-op ----------------------------------------------------------
     private var netRole = NetRole.NONE
@@ -122,9 +125,13 @@ class Game(context: Context) {
     private fun syncAudio() {
         val inRun = state == State.PLAYING || state == State.AUGMENT || state == State.PAUSED
         if (inRun) {
-            val idx = Levels.index(world.wave.coerceAtLeast(1))
+            val idx = world.themeIndex(world.wave.coerceAtLeast(1))
             audio.setTrack(1 + idx)
             audio.setIntense(world.bossPresent())
+        } else if (state == State.LEVELS) {
+            // hearing the sector you are about to pick is half the sell
+            audio.setTrack(1 + selectedLevel())
+            audio.setIntense(false)
         } else {
             audio.setTrack(0)
             audio.setIntense(false)
@@ -135,7 +142,7 @@ class Game(context: Context) {
     private fun syncSector() {
         val inRun = state == State.PLAYING || state == State.AUGMENT || state == State.PAUSED ||
             state == State.GAME_OVER
-        val idx = if (!inRun) 0 else Levels.index(world.wave.coerceAtLeast(1))
+        val idx = if (!inRun) selectedLevel() else world.themeIndex(world.wave.coerceAtLeast(1))
         if (idx != sectorShown) {
             sectorShown = idx
             bg.applyTheme(Levels.list[idx])
@@ -169,18 +176,36 @@ class Game(context: Context) {
         State.AUGMENT -> true          // a choice has to be made
         State.COOP -> { leaveCoop(); state = State.MENU; true }
         State.REVEAL -> { state = State.HANGAR; true }
-        State.HANGAR, State.SHOP, State.RECORDS -> { state = State.MENU; true }
+        State.HANGAR, State.SHOP, State.RECORDS, State.LEVELS -> { state = State.MENU; true }
         State.PLAYING -> { state = State.PAUSED; true }
         State.PAUSED -> { state = State.MENU; true }
         State.GAME_OVER -> { state = State.MENU; true }
         State.MENU -> false
     }
 
+    /** The chosen sector, clamped back to one that is actually open. */
+    private fun selectedLevel(): Int {
+        val want = prefs.startLevel.coerceIn(0, Levels.list.size - 1)
+        return if (Levels.unlocked(want, prefs)) want else 0
+    }
+
+    /** Sectors that were shut when the run began and are open now. */
+    private fun newlyUnlocked(): List<Int> {
+        val now = Levels.unlockedMask(prefs)
+        val fresh = now and unlockMask.inv()
+        if (fresh == 0) return emptyList()
+        unlockMask = now
+        return Levels.list.indices.filter { (fresh shr it) and 1 == 1 }
+    }
+
     private fun startRun() {
         world.ship = ShipDex.byId(prefs.selectedShip)
         world.meta = Shop.meta(prefs)
+        world.levelOffset = selectedLevel()
         world.reset()
         newBest = false
+        freshUnlocks = emptyList()
+        unlockMask = Levels.unlockedMask(prefs)
         state = State.PLAYING
         clearPressed()
     }
@@ -225,7 +250,10 @@ class Game(context: Context) {
     }
 
     private fun buttonsFor(): List<Button> = when (state) {
-        State.MENU -> listOf(hud.play, hud.hangar, hud.shop, hud.records, hud.coop, hud.music, hud.sfx, hud.haptic)
+        State.MENU -> listOf(
+            hud.play, hud.levels, hud.hangar, hud.shop, hud.records, hud.coop,
+            hud.music, hud.sfx, hud.haptic
+        )
         State.PLAYING -> listOf(hud.pause)
         State.PAUSED -> listOf(hud.resume, hud.restart, hud.quit)
         State.GAME_OVER -> listOf(hud.retry, hud.toMenu)
@@ -237,6 +265,9 @@ class Game(context: Context) {
             add(hud.back); addAll(hud.shopRows)
         }
         State.RECORDS -> listOf(hud.back)
+        State.LEVELS -> ArrayList<Button>(hud.levelCells.size + 2).apply {
+            add(hud.back); add(hud.launch); addAll(hud.levelCells)
+        }
         State.COOP -> when (coopStage) {
             0 -> listOf(hud.back, hud.hostGame, hud.joinGame)
             1 -> listOf(hud.back, hud.startCoop)
@@ -326,6 +357,17 @@ class Game(context: Context) {
             state = State.MENU
             return
         }
+        if (state == State.LEVELS) {
+            when {
+                b === hud.back -> state = State.MENU
+                b === hud.launch -> startRun()
+                else -> {
+                    val idx = hud.levelCells.indexOfFirst { it === b }
+                    if (idx >= 0 && Levels.unlocked(idx, prefs)) prefs.startLevel = idx
+                }
+            }
+            return
+        }
         if (state == State.COOP) {
             handleCoopButton(b)
             return
@@ -369,6 +411,7 @@ class Game(context: Context) {
                 haptics.enabled = prefs.hapticsOn
                 haptics.medium()
             }
+            hud.levels -> state = State.LEVELS
             hud.hangar -> state = State.HANGAR
             hud.shop -> state = State.SHOP
             hud.records -> state = State.RECORDS
@@ -427,6 +470,7 @@ class Game(context: Context) {
     private fun startCoopRun() {
         world.ship = ShipDex.byId(prefs.selectedShip)
         world.meta = Shop.meta(prefs)
+        world.levelOffset = selectedLevel()
         world.joinPartner(ShipDex.byId(host.partnerShipId), Meta(), host.partnerName)
         world.reset()
         host.beginRun()
@@ -521,7 +565,7 @@ class Game(context: Context) {
         syncAudio()
 
         when (state) {
-            State.MENU, State.HANGAR, State.REVEAL, State.SHOP, State.RECORDS -> {
+            State.MENU, State.HANGAR, State.REVEAL, State.SHOP, State.RECORDS, State.LEVELS -> {
                 bg.update(dt, 0.12f)
                 fx.update(dt)
             }
@@ -563,6 +607,7 @@ class Game(context: Context) {
                     prefs.totalCores = prefs.totalCores + coresEarned
                     prefs.totalKills = prefs.totalKills + world.kills
                     if (world.levelsCleared > prefs.bestLevel) prefs.bestLevel = world.levelsCleared
+                    freshUnlocks = newlyUnlocked()
                     lockoutT = 0.9f
                     clearPressed()
                 }
@@ -642,7 +687,7 @@ class Game(context: Context) {
         bg.draw(c)
 
         if (state != State.MENU && state != State.HANGAR && state != State.REVEAL &&
-            state != State.SHOP && state != State.RECORDS
+            state != State.SHOP && state != State.RECORDS && state != State.LEVELS
         ) {
             c.save()
             c.translate(fx.shakeX, fx.shakeY)
@@ -652,18 +697,20 @@ class Game(context: Context) {
 
         when (state) {
             State.MENU -> hud.drawMenu(c, time)
-            State.PLAYING -> hud.drawGame(c, world, time)
-            State.PAUSED -> { hud.drawGame(c, world, time, false); hud.drawPause(c, world, time) }
-            State.GAME_OVER -> { hud.drawGame(c, world, time, false); hud.drawGameOver(c, world, newBest, time) }
-            State.AUGMENT -> { hud.drawGame(c, world, time, false); hud.drawAugment(c, world, time) }
             State.PLAYING -> if (partnerPicking) {
-                hud.drawGame(c, world, time, false); hud.drawPartnerPicking(c, time)
+                // the partner is drafting; the run is frozen behind the notice
+                hud.drawGame(c, world, time, false)
+                hud.drawPartnerPicking(c, time)
             } else {
                 hud.drawGame(c, world, time)
             }
+            State.PAUSED -> { hud.drawGame(c, world, time, false); hud.drawPause(c, world, time) }
+            State.GAME_OVER -> { hud.drawGame(c, world, time, false); hud.drawGameOver(c, world, newBest, time, freshUnlocks) }
+            State.AUGMENT -> { hud.drawGame(c, world, time, false); hud.drawAugment(c, world, time) }
             State.HANGAR -> hud.drawHangar(c, prefs.selectedShip, time)
             State.SHOP -> hud.drawShop(c, time)
             State.RECORDS -> hud.drawRecords(c, time)
+            State.LEVELS -> hud.drawLevels(c, selectedLevel(), time)
             State.COOP -> hud.drawCoop(
                 c, coopStage,
                 if (netRole == NetRole.HOST) "HOSTING" else "JOINING",

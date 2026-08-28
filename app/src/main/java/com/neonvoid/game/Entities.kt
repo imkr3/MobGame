@@ -59,6 +59,11 @@ class Bullet {
     var splash = 0f          // blast radius on impact
     var fuse = 0f            // seconds until it bursts on its own
     var shrapnel = 0         // fragments produced when it bursts
+    var dwell = 0f           // seconds spent inside a CHRONO field
+    var fracture = 0         // shards thrown when this shot lands
+    var shardDamage = 0      // damage each of those shards carries
+    var shardHoming = false
+    var burn = 0f            // damage per second this shot leaves behind
 }
 
 fun Enemy.seedPhase(): Float = (x + y) * 0.05f
@@ -95,6 +100,8 @@ class Enemy {
     var aux2 = 0f
     var telegraph = 0f       // 0..1 wind-up indicator
     var link = -1            // partner index, for paired enemies
+    var burn = 0f            // seconds left alight
+    var burnDps = 0f
 }
 
 class PowerUp {
@@ -123,6 +130,8 @@ class Player {
     var thrust = 0f
     var shipId = 0
     var hitR = 5.5f                   // small hitbox: grazing is the point
+    var revenge = 0f                  // seconds of VENGEANCE fury left
+    var regenT = 0f                   // countdown to the next regrown shield
     val bodyR = 15f
 }
 

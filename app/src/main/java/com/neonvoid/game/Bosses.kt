@@ -12,22 +12,22 @@ import kotlin.math.sin
 object BossAI {
 
     /** Late bosses cycle their patterns faster. */
-    private fun tempo(w: World): Float = clamp(1f - w.wave * 0.013f, 0.55f, 1f)
+    private fun tempo(w: World): Float = clamp(1f - w.wave * 0.017f, 0.45f, 1f)
 
     /** From the second sector loop onwards, every boss brings friends. */
     private fun escortCheck(w: World, e: Enemy, dt: Float) {
-        if (w.wave < 10) return
+        if (w.wave < 5) return
         e.aux2 -= dt
         if (e.aux2 > 0f) return
-        e.aux2 = clamp(9f - w.wave * 0.12f, 4.5f, 9f)
-        val kind = when (Levels.index(w.wave)) {
+        e.aux2 = clamp(8f - w.wave * 0.14f, 3.5f, 8f)
+        val kind = when (w.themeIndex(w.wave)) {
             0 -> EK.DRIFTER
             1 -> EK.CHARGER
             2 -> EK.ORBITER
             3 -> EK.SPLITTER
             else -> EK.LANCER
         }
-        val n = 1 + (w.wave / 12).coerceAtMost(2)
+        val n = 1 + (w.wave / 9).coerceAtMost(3)
         for (i in 0 until n) w.spawnMinion(kind, rnd(60f, w.w - 60f), -30f)
         w.fx.shockwave(e.x, e.y, e.r * 2f, e.color, 0.4f, 2.5f)
     }
@@ -43,8 +43,9 @@ object BossAI {
         if (wantPhase != e.phase && e.state != 0) {
             e.phase = wantPhase
             e.state = 3
-            e.stateT = 1.3f
-            w.clearHostileFire()
+            e.stateT = 1.1f
+            // The boss stops firing for the transition, so the screen clears on
+            // its own - wiping live bullets robbed the moment of all its weight.
             w.fx.shockwave(e.x, e.y, w.w * 1.1f, Palette.RED, 0.7f, 5f)
             w.fx.flash(Palette.RED, 0.35f)
             w.fx.shake(0.45f)

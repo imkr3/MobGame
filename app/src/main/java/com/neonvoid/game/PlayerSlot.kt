@@ -43,6 +43,8 @@ class PlayerSlot(val index: Int, fx: Fx) {
         player.bank = 0f
         player.thrust = 0f
         player.fireT = 0f
+        player.revenge = 0f
+        player.regenT = 0f
         loadout.bonusSlots = meta.extraSlots
         if (ship.signature >= 0) loadout.lvl[ship.signature] = ship.signatureLevel
         home(width, height)
