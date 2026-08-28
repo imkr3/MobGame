@@ -18,23 +18,28 @@ object Aug {
     const val FLAK = 6
     const val TETHER = 7
     const val WING = 8
-    const val ABILITIES = 9
+    const val VORTEX = 9
+    const val SENTINEL = 10
+    const val ABILITIES = 11
 
     // stat modules
-    const val RAPID = 9
-    const val POWER = 10
-    const val VELOCITY = 11
-    const val AGILITY = 12
-    const val MAGNET = 13
-    const val GRAZE = 14
-    const val ARMOR = 15
-    const val SALVAGE = 16
-    const val REPAIR = 17
-    const val COOLANT = 18
-    const val PIERCE = 19
-    const val CRIT = 20
-    const val RECLAIM = 21
-    const val COUNT = 22
+    const val RAPID = 11
+    const val POWER = 12
+    const val VELOCITY = 13
+    const val AGILITY = 14
+    const val MAGNET = 15
+    const val GRAZE = 16
+    const val ARMOR = 17
+    const val SALVAGE = 18
+    const val REPAIR = 19
+    const val COOLANT = 20
+    const val PIERCE = 21
+    const val CRIT = 22
+    const val RECLAIM = 23
+    const val HARDPOINT = 24
+    const val EVASION = 25
+    const val BOUNTY = 26
+    const val COUNT = 27
 
     /** Abilities cap at 3 before they must evolve, then run to 5 down the chosen branch. */
     const val BASE_MAX = 3
@@ -56,26 +61,29 @@ object Aug {
 
     val names = arrayOf(
         "SPREAD", "LANCE", "SWARM", "ORBIT", "ARC", "PULSE", "FLAK", "TETHER", "WING",
+        "VORTEX", "SENTINEL",
         "RAPID", "POWER", "VELOCITY", "AGILITY", "MAGNET", "GRAZE", "ARMOR", "SALVAGE",
-        "REPAIR", "COOLANT", "PIERCE", "CRIT", "RECLAIM"
+        "REPAIR", "COOLANT", "PIERCE", "CRIT", "RECLAIM", "HARDPOINT", "EVASION", "BOUNTY"
     )
 
     val statMax = intArrayOf(
-        0, 0, 0, 0, 0, 0, 0, 0, 0,
-        5, 4, 3, 3, 3, 3, 2, 3, 2, 3, 2, 3, 3
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        5, 4, 3, 3, 3, 3, 2, 3, 2, 3, 2, 3, 3, 2, 3, 3
     )
 
     val colors = intArrayOf(
         Palette.CYAN, Palette.VIOLET, Palette.LIME, Palette.AMBER, Palette.SKY, Palette.MAGENTA,
-        Palette.RED, Palette.ROSE, Palette.WHITE,
+        Palette.RED, Palette.ROSE, Palette.WHITE, Palette.VIOLET, Palette.SKY,
         Palette.CYAN, Palette.RED, Palette.SKY, Palette.LIME, Palette.AMBER, Palette.MAGENTA,
-        Palette.LIME, Palette.AMBER, Palette.ROSE, Palette.SKY, Palette.VIOLET, Palette.RED, Palette.CYAN
+        Palette.LIME, Palette.AMBER, Palette.ROSE, Palette.SKY, Palette.VIOLET, Palette.RED,
+        Palette.CYAN, Palette.WHITE, Palette.LIME, Palette.AMBER
     )
 
     /** Three-letter badge codes for the HUD. */
     val codes = arrayOf(
-        "SPR", "LNC", "SWM", "ORB", "ARC", "PLS", "FLK", "TTH", "WNG",
-        "RPD", "PWR", "VEL", "AGI", "MAG", "GRZ", "ARM", "SLV", "REP", "COL", "PRC", "CRT", "RCL"
+        "SPR", "LNC", "SWM", "ORB", "ARC", "PLS", "FLK", "TTH", "WNG", "VTX", "SNT",
+        "RPD", "PWR", "VEL", "AGI", "MAG", "GRZ", "ARM", "SLV", "REP", "COL", "PRC", "CRT",
+        "RCL", "HRD", "EVA", "BTY"
     )
 
     val branchNames = arrayOf(
@@ -87,7 +95,9 @@ object Aug {
         arrayOf("NOVA", "REPULSOR"),
         arrayOf("CLUSTER", "AIRBURST"),
         arrayOf("LEECH", "SIPHON"),
-        arrayOf("ESCORT", "STRIKE")
+        arrayOf("ESCORT", "STRIKE"),
+        arrayOf("SINGULARITY", "IMPLOSION"),
+        arrayOf("BATTERY", "MORTAR")
     )
 
     private val abilityBlurb = arrayOf(
@@ -99,7 +109,9 @@ object Aug {
         "A shockwave detonates outward on a timer.",
         "Lobbed shells burst into shrapnel mid-flight.",
         "A cutting beam latches onto the nearest target.",
-        "Two wingmen fly your flanks and fire with you."
+        "Two wingmen fly your flanks and fire with you.",
+        "A singularity drags everything nearby into it.",
+        "Drops a turret that holds position and fires."
     )
 
     private val branchBlurb = arrayOf(
@@ -111,11 +123,13 @@ object Aug {
         arrayOf("Huge blast that banks enemy fire as score.", "A constant field that repels enemy fire."),
         arrayOf("Three shells per volley, wider spread.", "One shell, enormous burst and blast damage."),
         arrayOf("The beam feeds your overdrive as it cuts.", "Cuts far harder and drags the target in."),
-        arrayOf("Wingmen soak incoming fire for you.", "Wingmen carry missiles of their own.")
+        arrayOf("Wingmen soak incoming fire for you.", "Wingmen carry missiles of their own."),
+        arrayOf("Wider pull that banks caught fire as score.", "Collapses into a devastating detonation."),
+        arrayOf("Two turrets, and they fire faster.", "The turret lobs shells instead of bolts.")
     )
 
     private val statBlurb = arrayOf(
-        "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "",
         "+10% fire rate.",
         "+1 damage on every shot.",
         "+15% projectile speed.",
@@ -128,7 +142,10 @@ object Aug {
         "-10% cooldown on every ability system.",
         "Main gun shots punch through one more enemy.",
         "+12% chance for a shot to hit twice.",
-        "Pickups top up your overdrive meter."
+        "Pickups top up your overdrive meter.",
+        "Raises the main gun ceiling, and one level right now.",
+        "+0.35s of mercy after taking a hit.",
+        "+40% gem drops, and they are worth more."
     )
 
     fun isAbility(id: Int): Boolean = id < ABILITIES
@@ -153,6 +170,8 @@ object Aug {
             FLAK -> "Level $nextLevel: more shrapnel, shorter fuse."
             TETHER -> "Level $nextLevel: the beam bites deeper."
             WING -> "Level $nextLevel: wingmen fire faster."
+            VORTEX -> "Level $nextLevel: wider pull, harder bite."
+            SENTINEL -> "Level $nextLevel: the turret lasts longer."
             else -> "Level $nextLevel: bigger blast, shorter fuse."
         }
     }
@@ -172,6 +191,8 @@ class AugCard(
 class Loadout {
     val lvl = IntArray(Aug.COUNT)
     val branch = IntArray(Aug.ABILITIES)
+    /** Extra bay slots bought in the shop. */
+    var bonusSlots = 0
 
     fun reset() {
         lvl.fill(0)
@@ -184,7 +205,9 @@ class Loadout {
 
     fun slotsUsed(): Int = (0 until Aug.COUNT).count { lvl[it] > 0 }
 
-    fun slotsFull(): Boolean = slotsUsed() >= Aug.MAX_SLOTS
+    fun maxSlots(): Int = Aug.MAX_SLOTS + bonusSlots
+
+    fun slotsFull(): Boolean = slotsUsed() >= maxSlots()
 
     fun canEvolve(id: Int): Boolean =
         Aug.isAbility(id) && lvl[id] >= Aug.BASE_MAX && branch[id] == 0
@@ -209,6 +232,9 @@ class Loadout {
     fun extraPierce(): Int = lvl[Aug.PIERCE]
     fun critChance(): Float = 0.12f * lvl[Aug.CRIT]
     fun reclaimCharge(): Float = 0.06f * lvl[Aug.RECLAIM]
+    fun maxWeapon(): Int = 5 + lvl[Aug.HARDPOINT]
+    fun mercyBonus(): Float = 0.35f * lvl[Aug.EVASION]
+    fun gemBonus(): Float = 0.40f * lvl[Aug.BOUNTY]
 
     // -------------------------------------------------------------- cards
 

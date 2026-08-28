@@ -48,6 +48,24 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("sfx", true)
         set(v) = sp.edit().putBoolean("sfx", v).apply()
 
+    fun shopLevel(id: Int): Int = sp.getInt("shop_$id", 0)
+
+    fun setShopLevel(id: Int, level: Int) {
+        sp.edit().putInt("shop_$id", level).apply()
+    }
+
+    var bestLevel: Int
+        get() = sp.getInt("best_level", 0)
+        set(v) = sp.edit().putInt("best_level", v).apply()
+
+    var totalCores: Int
+        get() = sp.getInt("total_cores", 0)
+        set(v) = sp.edit().putInt("total_cores", v).apply()
+
+    var totalKills: Int
+        get() = sp.getInt("total_kills", 0)
+        set(v) = sp.edit().putInt("total_kills", v).apply()
+
     var hapticsOn: Boolean
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit().putBoolean("haptics", v).apply()

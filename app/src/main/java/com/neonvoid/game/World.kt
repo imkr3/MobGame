@@ -37,6 +37,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     val loadout = Loadout()
     /** The hull chosen in the hangar; set before [reset]. */
     var ship: Ship = ShipDex.byId(ShipDex.STARTER)
+    /** Permanent shop bonuses; set before [reset]. */
+    var meta: Meta = Meta()
     /** Optional sound sink; null in headless tests. */
     var sound: SoundBus? = null
     val arsenal = Arsenal(fx)
@@ -59,6 +61,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     var wave = 0
         private set
     var kills = 0
+        private set
+    /** How many themed levels the run has completed. */
+    var levelsCleared = 0
         private set
     private var killsSinceWeapon = 0
     var gameOver = false
@@ -83,7 +88,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     var bossHpRatio = 0f
         internal set
 
-    private fun scoreMultiplier(): Float = loadout.scoreMul() * ship.scoreMul
+    private fun scoreMultiplier(): Float = loadout.scoreMul() * ship.scoreMul * meta.scoreMul
 
     val multiplier: Float
         get() = clamp(1f + combo * 0.1f, 1f, 9.9f)
@@ -114,6 +119,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         script.clear(); scriptIdx = 0
         score = 0; combo = 0; maxCombo = 0; comboT = 0f
         wave = 0; kills = 0; killsSinceWeapon = 4; gameOver = false
+        levelsCleared = 0
         loadout.reset()
         arsenal.reset()
         pendingAugment = false
@@ -124,13 +130,14 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         time = 0f
         banner = ""; bannerSub = ""; bannerT = 0f
         player.shipId = ship.id
-        player.lives = ship.lives
+        player.lives = ship.lives + meta.extraLives
         player.hitR = ship.hitR
-        player.weapon = 1
-        player.shield = ship.startShield
+        player.weapon = meta.startWeapon
+        player.shield = ship.startShield + meta.startShield
+        player.overdrive = meta.startOverdrive
+        loadout.bonusSlots = meta.extraSlots
         if (ship.signature >= 0) loadout.lvl[ship.signature] = ship.signatureLevel
         player.invuln = 2f
-        player.overdrive = 0f
         player.odTime = 0f
         player.alive = true
         player.respawnT = 0f
@@ -181,6 +188,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         when (c.id) {
             Aug.REPAIR -> player.lives = (player.lives + 1).coerceAtMost(5)
             Aug.ARMOR -> player.shield = (player.shield + 1).coerceAtMost(loadout.maxShield())
+            Aug.HARDPOINT -> player.weapon = (player.weapon + 1).coerceAtMost(loadout.maxWeapon())
         }
         pendingAugment = false
         banner = if (c.branchPick != 0) "EVOLVED" else "AUGMENT ONLINE"
@@ -442,24 +450,28 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 }
             }
             EK.BOSS -> {
-                val sector = Sectors.forWave(wave)
-                e.bossType = sector.boss
-                val typeMul = when (sector.boss) {
+                val theme = Levels.forWave(wave)
+                val bossType = Levels.bossFor(wave)
+                e.bossType = bossType
+                val typeMul = when (bossType) {
                     BT.WARDEN -> 0.92f
                     BT.HIVE -> 0.95f
                     BT.FORGE -> 1.3f
                     BT.NULLIFIER -> 1.15f
                     else -> 1f
                 }
-                e.r = if (sector.boss == BT.FORGE) 58f else 52f
+                e.r = if (bossType == BT.FORGE) 58f else 52f
                 // quadratic term is what stops a maxed loadout melting late bosses;
                 // the tier bonus stays modest so deep loops do not become a slog
-                e.hp = (120f + wave * 42f + wave * wave * 1.9f) * typeMul * (1f + Sectors.tier(wave) * 0.35f)
+                // The quadratic is what stops a maxed loadout melting late bosses,
+                // but it is capped so very deep runs do not hit a wall of health.
+                val quad = minOf(wave.toFloat() * wave, 3600f) * 1.9f
+                e.hp = (120f + wave * 42f + quad) * typeMul * (1f + Levels.tier(wave) * 0.35f)
                 e.vy = 90f
                 e.holdY = h * 0.20f
                 e.fireEvery = 1f
                 e.score = 3000 + wave * 600
-                e.color = sector.accent
+                e.color = theme.accent
                 e.amp = w * 0.26f
                 e.freq = 0.55f
                 e.dropBias = 6f
@@ -490,19 +502,19 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         script.clear()
         scriptIdx = 0
         waveT = 0f
-        val sector = Sectors.forWave(n)
-        val tier = Sectors.tier(n)
+        val sector = Levels.forWave(n)
+        val tier = Levels.tier(n)
         // linear early, quadratic late: the opening stays readable while a
         // fully-augmented ship still meets something that can kill it
         val hpMul = 1f + (n - 1) * 0.22f + (n - 1) * (n - 1) * 0.014f + tier * 0.9f
 
-        if (Sectors.isBossWave(n)) {
+        if (Levels.isBossWave(n)) {
             script.add(Spawn(1.9f, EK.BOSS, w * 0.5f, -110f, hpMul))
             return
         }
 
         var t = 0.4f
-        val waveInSector = (n - 1) % Sectors.WAVES_PER_SECTOR
+        val waveInSector = (n - 1) % Levels.WAVES_PER_LEVEL
         // grows with the run overall, with a small breather at each sector start
         val groups = 2 + waveInSector.coerceAtMost(3) + (n / 6).coerceAtMost(4) + tier
         for (g in 0 until groups) {
@@ -616,21 +628,36 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         wave = n
         buildWave(n)
         awaitingNextWave = false
-        val sector = Sectors.forWave(n)
+        val theme = Levels.forWave(n)
         when {
-            Sectors.isBossWave(n) -> {
+            // A finished level is a milestone, not a stopping point - the run
+            // rolls straight on into the next theme.
+            Levels.isLevelStart(n) && n > 1 -> {
+                val cleared = Levels.number(n) - 1
+                val bonus = (6000 * cleared * scoreMultiplier()).toInt()
+                score += bonus
+                levelsCleared = cleared
+                banner = "LEVEL $cleared CLEARED"
+                bannerSub = "${theme.name}   +$bonus"
+                bannerT = 3.2f
+                fx.flash(theme.accent, 0.4f)
+                fx.shockwave(player.x, player.y, w * 1.4f, theme.accent, 0.9f, 5f)
+                sound?.sfx(Sfx.LEVEL_UP)
+                haptics.heavy()
+            }
+            Levels.isBossWave(n) -> {
                 banner = "WARNING"
-                bannerSub = sector.bossName
+                bannerSub = Levels.bossName(n)
                 bannerT = 2.4f
                 fx.flash(Palette.RED, 0.3f)
                 sound?.sfx(Sfx.WARN)
                 haptics.medium()
             }
-            Sectors.isSectorStart(n) -> {
-                banner = sector.name
-                bannerSub = sector.subtitle
+            Levels.isLevelStart(n) -> {
+                banner = theme.name
+                bannerSub = theme.subtitle
                 bannerT = 2.4f
-                fx.flash(sector.accent, 0.22f)
+                fx.flash(theme.accent, 0.22f)
                 haptics.light()
             }
             else -> {
@@ -706,7 +733,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             player.respawnT -= dt
             if (player.respawnT <= 0f) {
                 player.alive = true
-                player.invuln = 1.5f
+                player.invuln = 1.5f + loadout.mercyBonus()
                 centerPlayer()
                 fx.shockwave(player.x, player.y, 90f, Palette.CYAN, 0.5f, 2.5f)
             }
@@ -859,7 +886,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     }
 
     internal fun enemyBulletSpeed(): Float =
-        clamp(155f + wave * 11f + Sectors.tier(wave) * 45f, 155f, 470f)
+        clamp(155f + wave * 11f + Levels.tier(wave) * 45f, 155f, 470f)
 
     /** Fire an enemy bullet. Used by [EnemyAI] and [BossAI]. */
     internal fun hostileShot(x: Float, y: Float, angle: Float, speed: Float, r: Float, color: Int, style: Int): Bullet =
@@ -929,7 +956,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val roll = rnd(1f)
         // Weapon drops thin out as the gun grows, so the last levels are earned
         // rather than handed over; a long pity timer stops a cold streak dead.
-        val starving = player.weapon < MAX_WEAPON && killsSinceWeapon >= 14 + player.weapon * 6
+        val starving = player.weapon < loadout.maxWeapon() && killsSinceWeapon >= 14 + player.weapon * 6
         val weaponChance = 0.042f * bias * clamp(1f - player.weapon * 0.13f, 0.3f, 1f)
         val lifeChance = if (fromTough) 0.012f * bias else 0f
         val shieldChance = if (player.shield >= loadout.maxShield()) 0f else 0.018f * bias
@@ -938,7 +965,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val wEnd = weaponChance
         val lEnd = wEnd + lifeChance
         val sEnd = lEnd + shieldChance
-        val gEnd = sEnd + 0.34f
+        val gEnd = sEnd + 0.34f * (1f + loadout.gemBonus())
         val kind = when {
             starving -> PK.WEAPON
             roll < wEnd -> PK.WEAPON
@@ -1061,7 +1088,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     private fun collect(u: PowerUp) {
         when (u.kind) {
             PK.WEAPON -> {
-                if (player.weapon < MAX_WEAPON) {
+                if (player.weapon < loadout.maxWeapon()) {
                     player.weapon++
                     fx.popText(player.x, player.y - 46f, "WEAPON ${player.weapon}", Palette.CYAN, 20f)
                 } else {
@@ -1081,7 +1108,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 fx.flash(Palette.ROSE, 0.25f)
             }
             else -> {
-                val v = (200 * multiplier * scoreMultiplier()).toInt()
+                val v = (200 * multiplier * scoreMultiplier() * (1f + loadout.gemBonus() * 0.5f)).toInt()
                 score += v
                 fx.popText(u.x, u.y, "+$v", Palette.AMBER, 16f, 0.7f)
             }
@@ -1205,7 +1232,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     private fun hurtPlayer() {
         if (player.shield > 0) {
             player.shield--
-            player.invuln = 1.4f
+            player.invuln = 1.4f + loadout.mercyBonus()
             fx.shockwave(player.x, player.y, 110f, Palette.LIME, 0.5f, 3f)
             fx.burst(player.x, player.y, 20, Palette.LIME, 280f, 2.6f, 0.5f, true)
             fx.flash(Palette.LIME, 0.22f)

@@ -119,7 +119,25 @@ object ShipDex {
         Ship(17, "PHANTOM", Rarity.LEGENDARY, 5, Palette.MAGENTA,
             "Barely there. Grazes charge it almost instantly.",
             lives = 2, hitR = 3.4f, grazeMul = 2.0f, handlingMul = 1.2f,
-            signature = Aug.ARC, signatureLevel = 1)
+            signature = Aug.ARC, signatureLevel = 1),
+        Ship(18, "QUILL", Rarity.COMMON, 5, Palette.ROSE,
+            "Light, twitchy, and quicker on the trigger than it looks.",
+            handlingMul = 1.08f, fireMul = 0.94f, hitR = 5.2f),
+        Ship(19, "CINDER", Rarity.RARE, 6, Palette.AMBER,
+            "Carries a deployable gun in the bay.",
+            fireMul = 1.04f, signature = Aug.SENTINEL, signatureLevel = 1),
+        Ship(20, "MAW", Rarity.RARE, 3, Palette.VIOLET,
+            "Runs a collapsing field. Heavy, and it pulls.",
+            handlingMul = 0.9f, lives = 4, signature = Aug.VORTEX, signatureLevel = 1),
+        Ship(21, "SPECTRE", Rarity.EPIC, 7, Palette.WHITE,
+            "Slips between shots and gets paid for it.",
+            hitR = 4.2f, grazeMul = 1.5f, scoreMul = 1.1f, handlingMul = 1.05f),
+        Ship(22, "JUGGERNAUT", Rarity.EPIC, 6, Palette.RED,
+            "Enormous guns bolted to an enormous frame.",
+            lives = 4, damageBonus = 3, fireMul = 1.3f, handlingMul = 0.78f),
+        Ship(23, "ZENITH", Rarity.LEGENDARY, 4, Palette.LIME,
+            "Opens with a singularity already spun up.",
+            magnetMul = 1.6f, scoreMul = 1.15f, signature = Aug.VORTEX, signatureLevel = 2)
     )
 
     const val PULL_COST = 100
@@ -132,6 +150,20 @@ object ShipDex {
     fun withOwned(mask: Int, id: Int): Int = mask or (1 shl id)
 
     fun ownedCount(mask: Int): Int = list.count { isOwned(mask, it.id) }
+
+    /** Pull restricted to a minimum rarity - the ten-pull guarantee. */
+    fun rollAtLeast(minRarity: Int): Ship {
+        val pool = list.filter { it.rarity >= minRarity }
+        if (pool.isEmpty()) return roll()
+        var total = 0
+        for (s in pool) total += Rarity.weights[s.rarity]
+        var pick = Random.nextInt(total)
+        for (s in pool) {
+            pick -= Rarity.weights[s.rarity]
+            if (pick < 0) return s
+        }
+        return pool[0]
+    }
 
     /** Weighted pull: rarity first, then a uniform pick inside that rarity. */
     fun roll(): Ship {

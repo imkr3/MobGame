@@ -18,7 +18,7 @@ class Background {
         var x = 0f; var y = 0f; var speed = 0f; var size = 0f; var color = Palette.WHITE
     }
 
-    private var theme: Sector = Sectors.list[0]
+    private var theme: LevelTheme = Levels.list[0]
     private var w = 0f
     private var h = 0f
     private var horizon = 0f
@@ -39,7 +39,7 @@ class Background {
     private val gridCols = 15
 
     /** Swap the sector palette; rebuilds the shaders in place. */
-    fun applyTheme(sector: Sector) {
+    fun applyTheme(sector: LevelTheme) {
         if (theme === sector) return
         theme = sector
         if (w > 0f && h > 0f) resize(w, h)

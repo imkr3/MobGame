@@ -20,7 +20,7 @@ object BossAI {
         e.aux2 -= dt
         if (e.aux2 > 0f) return
         e.aux2 = clamp(9f - w.wave * 0.12f, 4.5f, 9f)
-        val kind = when (Sectors.index(w.wave)) {
+        val kind = when (Levels.index(w.wave)) {
             0 -> EK.DRIFTER
             1 -> EK.CHARGER
             2 -> EK.ORBITER

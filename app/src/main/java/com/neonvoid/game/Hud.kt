@@ -58,7 +58,11 @@ class Hud(private val prefs: Prefs) {
     val music = Button("MUSIC", Palette.VIOLET)
     val sfx = Button("SFX", Palette.VIOLET)
     val summon = Button("SUMMON", Palette.AMBER)
+    val summon10 = Button("SUMMON x10", Palette.AMBER)
     val back = Button("BACK", Palette.DIM)
+    val shop = Button("SHOP", Palette.LIME)
+    val records = Button("RECORDS", Palette.SKY)
+    val shopRows = Array(Shop.COUNT) { Button("", Palette.DIM) }
     val shipCells = Array(ShipDex.list.size) { Button("", Palette.DIM) }
 
     /** One offered augment: its card geometry, hit target and pre-wrapped copy. */
@@ -88,18 +92,26 @@ class Hud(private val prefs: Prefs) {
         bottom = bottomInset + 16f
 
         val cx = w * 0.5f
-        play.place(cx, h * 0.575f, w * 0.62f, 62f)
-        hangar.place(cx, h * 0.575f + 76f, w * 0.52f, 50f)
+        val menuTop = h * 0.545f
+        play.place(cx, menuTop, w * 0.62f, 60f)
+        val halfW = w * 0.305f
+        hangar.place(cx - halfW / 2 - 5f, menuTop + 72f, halfW, 48f)
+        shop.place(cx + halfW / 2 + 5f, menuTop + 72f, halfW, 48f)
+        records.place(cx, menuTop + 128f, w * 0.42f, 42f)
         val tw = w * 0.185f
-        music.place(cx - tw - 8f, h * 0.575f + 140f, tw, 40f)
-        sfx.place(cx, h * 0.575f + 140f, tw, 40f)
-        haptic.place(cx + tw + 8f, h * 0.575f + 140f, tw, 40f)
+        music.place(cx - tw - 8f, menuTop + 182f, tw, 38f)
+        sfx.place(cx, menuTop + 182f, tw, 38f)
+        haptic.place(cx + tw + 8f, menuTop + 182f, tw, 38f)
 
-        summon.place(cx, h * 0.795f, w * 0.62f, 56f)
+        summon.place(cx - w * 0.16f, h * 0.795f, w * 0.30f, 54f)
+        summon10.place(cx + w * 0.16f, h * 0.795f, w * 0.30f, 54f)
         back.place(cx, h * 0.875f, w * 0.4f, 46f)
-        val cols = 5
-        val cellW = w * 0.176f
-        val cellH = 74f
+        for (i in shopRows.indices) {
+            shopRows[i].place(cx, h * 0.175f + i * 96f, w * 0.9f, 84f)
+        }
+        val cols = 6
+        val cellW = w * 0.148f
+        val cellH = 66f
         for (i in shipCells.indices) {
             val col = i % cols
             val row = i / cols
@@ -166,7 +178,7 @@ class Hud(private val prefs: Prefs) {
         }
 
         // wave + where you are + what clearing it buys you
-        val sector = Sectors.forWave(world.wave.coerceAtLeast(1))
+        val sector = Levels.forWave(world.wave.coerceAtLeast(1))
         Neon.label(c, "WAVE ${world.wave}", w * 0.5f, top + 26f, 18f, Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.22f)
         if (!world.bossPresent()) {
             Neon.label(c, sector.name, w * 0.5f, top + 42f, 11f, fade(sector.accent, 0.8f), Paint.Align.CENTER, 0.4f, 0.3f)
@@ -194,24 +206,32 @@ class Hud(private val prefs: Prefs) {
             Neon.label(c, "GUARDIAN", w * 0.5f, by - 6f, 13f, Palette.RED, Paint.Align.CENTER, 0.5f, 0.3f)
         }
 
-        // lives
+        // lives, then the shield bank right beside them
         var lx = 24f
         val ly = h - bottom - 22f
-        for (i in 0 until p.lives.coerceAtMost(5)) {
+        for (i in 0 until p.lives.coerceAtMost(6)) {
             shipIcon(c, lx, ly, 9f, Palette.CYAN)
-            lx += 26f
+            lx += 24f
+        }
+        val maxShield = world.loadout.maxShield()
+        if (maxShield > 0) {
+            lx += 8f
+            for (i in 0 until maxShield) {
+                val filled = i < p.shield
+                Neon.ring(c, lx, ly, 7f, fade(Palette.LIME, if (filled) 0.95f else 0.22f), 1.8f, if (filled) 0.9f else 0.2f)
+                if (filled) Neon.orb(c, lx, ly, 2.6f, fade(Palette.LIME, 0.9f), 0.7f)
+                lx += 18f
+            }
         }
 
         // weapon pips
-        for (i in 0 until World.MAX_WEAPON) {
+        for (i in 0 until world.loadout.maxWeapon()) {
             val on = i < p.weapon
             val x = 24f + i * 15f
             val y = h - bottom - 48f
             Neon.fillRect(c, x - 5f, y - 3f, x + 5f, y + 3f, fade(if (on) Palette.CYAN else Palette.DIM, if (on) 0.95f else 0.25f))
         }
-        if (p.shield > 0) {
-            Neon.label(c, "SHIELD x${p.shield}", 24f, h - bottom - 62f, 13f, Palette.LIME, Paint.Align.LEFT, 0.5f, 0.14f)
-        }
+
 
         drawBadges(c, world)
         drawOverdrive(c, world, time)
@@ -287,14 +307,15 @@ class Hud(private val prefs: Prefs) {
         hangar.label = "HANGAR - ${ShipDex.byId(prefs.selectedShip).name}"
         drawButton(c, play, time, true)
         drawButton(c, hangar, time)
+        drawButton(c, shop, time)
+        drawButton(c, records, time)
         drawButton(c, music, time)
         drawButton(c, sfx, time)
         drawButton(c, haptic, time)
 
-        val statY = h * 0.795f
-        Neon.label(c, "BEST  ${formatScore(prefs.bestScore)}", cx, statY, 22f, Palette.AMBER, Paint.Align.CENTER, 0.7f, 0.14f, Neon.FONT_NUM)
-        Neon.label(c, "WAVE ${prefs.bestWave}   COMBO x${prefs.bestCombo}   RUNS ${prefs.runs}", cx, statY + 24f, 13f, Palette.DIM, Paint.Align.CENTER, 0.4f, 0.16f)
-        Neon.label(c, "${prefs.cores} CORES", cx, statY + 46f, 15f, Palette.AMBER, Paint.Align.CENTER, 0.6f, 0.2f, Neon.FONT_NUM)
+        val statY = h * 0.845f
+        Neon.label(c, "BEST  ${formatScore(prefs.bestScore)}", cx, statY, 20f, Palette.AMBER, Paint.Align.CENTER, 0.7f, 0.14f, Neon.FONT_NUM)
+        Neon.label(c, "WAVE ${prefs.bestWave}   LEVEL ${prefs.bestLevel}   ${prefs.cores} CORES", cx, statY + 22f, 12.5f, Palette.DIM, Paint.Align.CENTER, 0.4f, 0.14f)
 
         Neon.label(c, "DRAG ANYWHERE TO FLY  -  AUTO FIRE", cx, h - bottom - 40f, 13f, Palette.SKY, Paint.Align.CENTER, 0.5f, 0.2f)
         Neon.label(c, "GRAZE BULLETS TO CHARGE OVERDRIVE", cx, h - bottom - 20f, 13f, Palette.AMBER, Paint.Align.CENTER, 0.5f, 0.2f)
@@ -399,20 +420,110 @@ class Hud(private val prefs: Prefs) {
                 fade(if (have) s2.color else Palette.DIM, if (isSel) 0.20f else 0.06f),
                 fade(edge, if (have) 0.9f else 0.35f), if (isSel) 2.2f else 1.3f, if (isSel) 1f else 0.4f)
             if (have) {
-                hullIcon(c, s2, cell.cx, cell.cy - 5f, 13f, 1f)
-                Neon.label(c, s2.name, cell.cx, t + cell.h - 7f, 8.5f, s2.color, Paint.Align.CENTER, 0.25f, 0.02f, Neon.FONT_BODY)
+                hullIcon(c, s2, cell.cx, cell.cy - 4f, 11.5f, 1f)
+                Neon.label(c, s2.name, cell.cx, t + cell.h - 6f, 7f, s2.color, Paint.Align.CENTER, 0.2f, 0f, Neon.FONT_BODY)
             } else {
-                Neon.label(c, "?", cell.cx, cell.cy + 6f, 22f, fade(Palette.DIM, 0.7f), Paint.Align.CENTER, 0.3f, 0f)
-                Neon.label(c, Rarity.names[s2.rarity], cell.cx, t + cell.h - 7f, 7f, fade(Rarity.colors[s2.rarity], 0.5f), Paint.Align.CENTER, 0.2f, 0.08f, Neon.FONT_BODY)
+                Neon.label(c, "?", cell.cx, cell.cy + 5f, 19f, fade(Palette.DIM, 0.7f), Paint.Align.CENTER, 0.3f, 0f)
+                Neon.label(c, Rarity.names[s2.rarity].take(4), cell.cx, t + cell.h - 6f, 6.5f, fade(Rarity.colors[s2.rarity], 0.5f), Paint.Align.CENTER, 0.2f, 0.06f, Neon.FONT_BODY)
             }
         }
 
         val canPull = prefs.cores >= ShipDex.PULL_COST
-        summon.label = "SUMMON  ${ShipDex.PULL_COST}"
+        val canPull10 = prefs.cores >= ShipDex.PULL_COST * 10
+        summon.label = "x1  ${ShipDex.PULL_COST}"
         summon.color = if (canPull) Palette.AMBER else Palette.DIM
+        summon10.label = "x10  ${ShipDex.PULL_COST * 10}"
+        summon10.color = if (canPull10) Palette.AMBER else Palette.DIM
         drawButton(c, summon, time, canPull)
+        drawButton(c, summon10, time, canPull10)
         drawButton(c, back, time)
+        Neon.label(c, "A TEN-PULL GUARANTEES RARE OR BETTER", cx, h * 0.755f, 10.5f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.12f, Neon.FONT_BODY)
         Neon.label(c, "EARN CORES BY FLYING - SCORE AND WAVES BOTH PAY", cx, h * 0.745f, 11f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.14f, Neon.FONT_BODY)
+    }
+
+    fun drawShop(c: Canvas, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xF203010A.toInt())
+        val cx = w * 0.5f
+        Neon.label(c, "SHOP", cx, h * 0.075f, 34f, Palette.LIME, Paint.Align.CENTER, 1f, 0.3f)
+        Neon.label(c, "${prefs.cores} CORES", w - 20f, h * 0.075f, 16f, Palette.AMBER, Paint.Align.RIGHT, 0.6f, 0.12f, Neon.FONT_NUM)
+        Neon.label(c, "PERMANENT - CARRIES INTO EVERY RUN", cx, h * 0.075f + 22f, 11f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.16f, Neon.FONT_BODY)
+
+        for (i in Shop.items.indices) {
+            val item = Shop.items[i]
+            val b = shopRows[i]
+            val level = prefs.shopLevel(item.id)
+            val cost = Shop.cost(item.id, level)
+            val maxed = cost < 0
+            val affordable = !maxed && prefs.cores >= cost
+            b.enabled = !maxed
+            val l = b.cx - b.w / 2
+            val t = b.cy - b.h / 2
+            val r = b.cx + b.w / 2
+            val bot = b.cy + b.h / 2
+            val edge = when {
+                maxed -> Palette.DIM
+                affordable -> item.color
+                else -> Palette.DIM
+            }
+            Neon.panel(c, l, t, r, bot, 12f, fade(item.color, if (b.pressed) 0.24f else 0.07f),
+                fade(edge, if (affordable) 0.9f else 0.4f), 1.7f, if (affordable) 0.9f else 0.3f)
+            Neon.label(c, item.name, l + 16f, t + 24f, 17f, item.color, Paint.Align.LEFT, 0.7f, 0.12f)
+            Neon.label(c, item.desc, l + 16f, t + 44f, 11.5f, Palette.DIM, Paint.Align.LEFT, 0.25f, 0.01f, Neon.FONT_BODY)
+            for (pip in 0 until item.maxLevel) {
+                val px = l + 16f + pip * 15f
+                Neon.fillRect(c, px, t + 56f, px + 11f, t + 63f,
+                    fade(if (pip < level) item.color else Palette.DIM, if (pip < level) 0.95f else 0.2f))
+            }
+            if (maxed) {
+                Neon.label(c, "MAX", r - 20f, b.cy + 6f, 16f, Palette.DIM, Paint.Align.RIGHT, 0.4f, 0.2f)
+            } else {
+                Neon.label(c, cost.toString(), r - 20f, b.cy + 2f, 20f,
+                    if (affordable) Palette.AMBER else Palette.DIM, Paint.Align.RIGHT, 0.6f, 0.06f, Neon.FONT_NUM)
+                Neon.label(c, "CORES", r - 20f, b.cy + 18f, 9f, Palette.DIM, Paint.Align.RIGHT, 0.25f, 0.16f, Neon.FONT_BODY)
+            }
+        }
+        drawButton(c, back, time)
+    }
+
+    fun drawRecords(c: Canvas, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xF203010A.toInt())
+        val cx = w * 0.5f
+        Neon.label(c, "RECORDS", cx, h * 0.10f, 34f, Palette.SKY, Paint.Align.CENTER, 1f, 0.3f)
+
+        Neon.label(c, formatScore(prefs.bestScore), cx, h * 0.20f, 50f, Palette.AMBER, Paint.Align.CENTER, 1f, 0.05f, Neon.FONT_NUM)
+        Neon.label(c, "BEST SCORE", cx, h * 0.20f + 22f, 12f, Palette.DIM, Paint.Align.CENTER, 0.35f, 0.34f)
+
+        val rows = arrayOf(
+            "FURTHEST WAVE" to prefs.bestWave.toString(),
+            "LEVELS CLEARED" to prefs.bestLevel.toString(),
+            "BEST COMBO" to "x${prefs.bestCombo}",
+            "RUNS FLOWN" to prefs.runs.toString(),
+            "TOTAL KILLS" to formatScore(prefs.totalKills),
+            "CORES EARNED" to formatScore(prefs.totalCores),
+            "CORES HELD" to formatScore(prefs.cores),
+            "HULLS OWNED" to "${ShipDex.ownedCount(prefs.ownedShips)}/${ShipDex.list.size}",
+            "SUMMONS" to prefs.pulls.toString()
+        )
+        var y = h * 0.30f
+        for ((label, value) in rows) {
+            Neon.label(c, label, cx - 14f, y, 14f, Palette.DIM, Paint.Align.RIGHT, 0.3f, 0.14f, Neon.FONT_BODY)
+            Neon.label(c, value, cx + 18f, y, 16f, Palette.SKY, Paint.Align.LEFT, 0.5f, 0.04f, Neon.FONT_NUM)
+            y += 30f
+        }
+
+        Neon.label(c, "LEVELS", cx, y + 18f, 12f, Palette.VIOLET, Paint.Align.CENTER, 0.4f, 0.3f)
+        y += 40f
+        for (i in Levels.list.indices) {
+            val theme = Levels.list[i]
+            val seen = prefs.bestLevel > i
+            val col = if (seen) theme.accent else Palette.DIM
+            val row = i / 2
+            val col2 = i % 2
+            val lx = if (col2 == 0) cx - w * 0.24f else cx + w * 0.02f
+            Neon.label(c, "${i + 1}. ${if (seen) theme.name else "- - - -"}", lx, y + row * 22f, 12.5f,
+                fade(col, if (seen) 0.95f else 0.35f), Paint.Align.LEFT, 0.3f, 0.08f, Neon.FONT_BODY)
+        }
+        drawButton(c, back, time)
     }
 
     fun drawReveal(c: Canvas, ship: Ship, isNew: Boolean, refund: Int, time: Float) {
@@ -437,6 +548,43 @@ class Hud(private val prefs: Prefs) {
             Neon.label(c, "+$refund CORES", cx, h * 0.655f, 22f, Palette.AMBER, Paint.Align.CENTER, 0.8f, 0.12f, Neon.FONT_NUM)
         }
         Neon.label(c, "TAP TO CONTINUE", cx, h * 0.85f, 13f, fade(Palette.SKY, pulse), Paint.Align.CENTER, 0.5f, 0.3f, Neon.FONT_BODY)
+    }
+
+    /** Results grid for a ten-pull. */
+    fun drawRevealMulti(c: Canvas, results: List<Ship>, newFlags: List<Boolean>, refund: Int, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xF003010A.toInt())
+        val cx = w * 0.5f
+        val pulse = 0.6f + 0.4f * sin(time * 5f)
+        val newCount = newFlags.count { it }
+        val best = results.maxOfOrNull { it.rarity } ?: 0
+
+        Neon.label(c, "TEN-PULL", cx, h * 0.10f, 32f, fade(Rarity.colors[best], pulse), Paint.Align.CENTER, 1f, 0.32f)
+        Neon.label(c, if (newCount > 0) "$newCount NEW HULLS" else "NO NEW HULLS",
+            cx, h * 0.10f + 26f, 14f, if (newCount > 0) Palette.LIME else Palette.DIM, Paint.Align.CENTER, 0.6f, 0.24f)
+
+        val cols = 2
+        val cellW = w * 0.42f
+        val cellH = 74f
+        for (i in results.indices) {
+            val s2 = results[i]
+            val isNew = newFlags.getOrElse(i) { false }
+            val col = i % cols
+            val row = i / cols
+            val bx = cx + (col - (cols - 1) / 2f) * (cellW + 12f)
+            val by = h * 0.22f + row * (cellH + 10f)
+            val rc = Rarity.colors[s2.rarity]
+            Neon.panel(c, bx - cellW / 2, by - cellH / 2, bx + cellW / 2, by + cellH / 2, 10f,
+                fade(s2.color, if (isNew) 0.18f else 0.05f), fade(rc, if (isNew) 1f else 0.45f),
+                if (isNew) 2.2f else 1.2f, if (isNew) 1f else 0.35f)
+            hullIcon(c, s2, bx - cellW * 0.32f, by, 15f, if (isNew) 1f else 0.5f)
+            Neon.label(c, s2.name, bx - cellW * 0.16f, by - 2f, 15f, fade(s2.color, if (isNew) 1f else 0.6f), Paint.Align.LEFT, 0.4f, 0.06f)
+            Neon.label(c, if (isNew) "NEW" else Rarity.names[s2.rarity], bx - cellW * 0.16f, by + 16f, 9.5f,
+                fade(if (isNew) Palette.LIME else rc, 0.8f), Paint.Align.LEFT, 0.3f, 0.14f, Neon.FONT_BODY)
+        }
+        if (refund > 0) {
+            Neon.label(c, "+$refund CORES REFUNDED", cx, h * 0.66f, 17f, Palette.AMBER, Paint.Align.CENTER, 0.6f, 0.16f, Neon.FONT_NUM)
+        }
+        Neon.label(c, "TAP TO CONTINUE", cx, h * 0.74f, 13f, fade(Palette.SKY, pulse), Paint.Align.CENTER, 0.5f, 0.3f, Neon.FONT_BODY)
     }
 
     fun setPressed(b: Button?, value: Boolean) {

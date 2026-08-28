@@ -20,6 +20,7 @@ object Sfx {
     const val WAVE_CLEAR = 10
     const val LASER = 11
     const val SUMMON = 12
+    const val LEVEL_UP = 13
 }
 
 private object Wave {
@@ -156,6 +157,61 @@ class Synth(private val rate: Int = 22050) {
                 Section(intArrayOf(12, 10, 7, 10, 12, 14, 12, 10, 7, 10, 12, 14, 16, 14, 12, 10), bassDriving, hardBeat, 2),
                 Section(intArrayOf(0, 0, 3, 0, 7, 0, 3, 0, 10, 0, 7, 0, 3, 0, 0, -1), bassPulse, drivingBeat, 2),
                 Section(intArrayOf(16, 14, 12, 10, 12, 14, 16, 19, 16, 14, 12, 10, 7, 10, 12, 14), bassDriving, hardBeat, 2)
+            ),
+            leadWave = Wave.SAW, bassWave = Wave.SAW, arpWave = Wave.SQUARE
+        ),
+        // 6 EMERALD DRIFT - bright and rolling
+        Song(
+            bpm = 128f, root = 43, chords = intArrayOf(0, 5, -2, 3),
+            sections = arrayOf(
+                Section(intArrayOf(0, 2, 4, 7, 4, 2, 4, 7, 9, 7, 4, 2, 4, 7, 9, 11), bassStraight, fourFloor, 2),
+                Section(intArrayOf(7, 9, 11, 9, 7, 4, 2, 4, 7, 9, 11, 14, 11, 9, 7, 4), bassOctave, fourFloor, 2),
+                Section(intArrayOf(0, -1, 4, -1, 7, -1, 9, -1, 7, -1, 4, -1, 2, 4, 7, -1), bassSlow, sparseBeat, 1),
+                Section(intArrayOf(11, 9, 7, 9, 11, 9, 7, 4, 7, 9, 11, 9, 7, 4, 2, 0), bassDriving, drivingBeat, 2)
+            ),
+            leadWave = Wave.SQUARE, bassWave = Wave.TRI, arpWave = Wave.SQUARE
+        ),
+        // 7 ASH REACH - heavy and trudging
+        Song(
+            bpm = 138f, root = 37, chords = intArrayOf(0, -2, -4, 3),
+            sections = arrayOf(
+                Section(intArrayOf(0, -1, 0, 3, -1, 3, 4, -1, 0, -1, 3, 4, 7, -1, 4, 3), bassPulse, hardBeat, 1),
+                Section(intArrayOf(7, -1, 4, 3, 4, -1, 7, 9, 7, -1, 4, 3, 0, -1, 3, 4), bassDriving, hardBeat, 2),
+                Section(intArrayOf(0, 0, 3, 3, 4, 4, 7, 7, 4, 4, 3, 3, 0, 0, -1, -1), bassPulse, drivingBeat, 2),
+                Section(intArrayOf(10, 9, 7, 4, 3, 4, 7, 9, 10, 9, 7, 4, 3, 0, 3, 4), bassDriving, hardBeat, 2)
+            ),
+            leadWave = Wave.SAW, bassWave = Wave.SAW, arpWave = Wave.TRI
+        ),
+        // 8 AZURE SPIRE - crystalline, wide
+        Song(
+            bpm = 120f, root = 47, chords = intArrayOf(0, 3, -4, 5),
+            sections = arrayOf(
+                Section(intArrayOf(7, -1, 9, -1, 11, -1, 9, -1, 7, -1, 4, -1, 7, -1, 9, -1), bassSlow, sparseBeat, 2),
+                Section(intArrayOf(0, 4, 7, 11, 9, 7, 4, 7, 11, 14, 11, 7, 4, 2, 4, 7), bassStraight, fourFloor, 2),
+                Section(intArrayOf(14, -1, 11, -1, 9, -1, 11, 14, 16, -1, 14, 11, 9, -1, 7, -1), bassSlow, fourFloor, 1),
+                Section(intArrayOf(11, 9, 7, 9, 11, 14, 16, 14, 11, 9, 7, 4, 7, 9, 11, 14), bassOctave, drivingBeat, 2)
+            ),
+            leadWave = Wave.TRI, bassWave = Wave.TRI, arpWave = Wave.SQUARE
+        ),
+        // 9 ROSE NEBULA - lush and busy
+        Song(
+            bpm = 134f, root = 44, chords = intArrayOf(0, -4, 5, 3),
+            sections = arrayOf(
+                Section(intArrayOf(0, 2, 4, 5, 4, 2, 0, 2, 4, 5, 7, 5, 4, 2, 0, -1), bassStraight, fourFloor, 2),
+                Section(intArrayOf(7, 5, 4, 5, 7, 9, 11, 9, 7, 5, 4, 2, 4, 5, 7, 9), bassOctave, drivingBeat, 2),
+                Section(intArrayOf(11, -1, 9, -1, 7, -1, 9, 11, 12, -1, 11, 9, 7, -1, 5, -1), bassSlow, fourFloor, 1),
+                Section(intArrayOf(12, 11, 9, 7, 9, 11, 12, 14, 12, 11, 9, 7, 5, 4, 2, 0), bassDriving, hardBeat, 2)
+            ),
+            leadWave = Wave.SQUARE, bassWave = Wave.SAW, arpWave = Wave.TRI
+        ),
+        // 10 THE HOLLOW - sparse, then it never lets up
+        Song(
+            bpm = 160f, root = 39, chords = intArrayOf(0, -1, -4, 3),
+            sections = arrayOf(
+                Section(intArrayOf(0, -1, -1, 3, -1, -1, 7, -1, 0, -1, -1, 3, -1, 7, -1, -1), bassSlow, sparseBeat, 0),
+                Section(intArrayOf(0, 3, 7, 3, 0, 3, 7, 10, 12, 10, 7, 3, 0, 3, 7, 10), bassPulse, hardBeat, 2),
+                Section(intArrayOf(12, 12, 10, 10, 7, 7, 3, 3, 0, 0, 3, 3, 7, 7, 10, 10), bassDriving, hardBeat, 2),
+                Section(intArrayOf(16, 14, 12, 10, 12, 14, 16, 17, 16, 14, 12, 10, 7, 3, 0, -1), bassDriving, hardBeat, 2)
             ),
             leadWave = Wave.SAW, bassWave = Wave.SAW, arpWave = Wave.SQUARE
         )
@@ -353,6 +409,14 @@ class Synth(private val rate: Int = 22050) {
                 note(Wave.SQUARE, 659f, 0.14f, 0.22f, false, 0.4f)
                 note(Wave.SQUARE, 784f, 0.14f, 0.28f, false, 0.4f)
                 note(Wave.SQUARE, 1047f, 0.13f, 0.45f, false, 0.4f)
+            }
+            Sfx.LEVEL_UP -> {
+                note(Wave.SQUARE, 392f, 0.16f, 0.18f, false, 0.4f)
+                note(Wave.SQUARE, 523f, 0.16f, 0.24f, false, 0.4f)
+                note(Wave.SQUARE, 659f, 0.15f, 0.32f, false, 0.4f)
+                note(Wave.SQUARE, 784f, 0.15f, 0.45f, false, 0.4f)
+                note(Wave.SQUARE, 1047f, 0.14f, 0.7f, false, 0.4f)
+                note(Wave.SAW, 196f, 0.18f, 0.8f, false, 0.5f, slidePerSec = 2.2f)
             }
             Sfx.SUMMON -> {
                 note(Wave.SAW, 120f, 0.24f, 1.1f, false, 0.5f, slidePerSec = 5.5f)

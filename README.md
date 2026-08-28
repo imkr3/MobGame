@@ -10,14 +10,16 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
 </p>
 <p align="center">
   <img src="docs/preview/hangar.png" width="32%" alt="Hangar" />
-  <img src="docs/preview/summon.png" width="32%" alt="Summon reveal" />
-  <img src="docs/preview/abilities.png" width="32%" alt="Beams, orbitals and missiles" />
+  <img src="docs/preview/shop.png" width="32%" alt="Shop" />
+  <img src="docs/preview/summon.png" width="32%" alt="Ten-pull" />
 </p>
 <p align="center">
-  <img src="docs/preview/sector-crimson.png" width="32%" alt="Crimson Belt sector" />
-  <img src="docs/preview/sector-violet.png" width="32%" alt="Violet Depths sector" />
-  <img src="docs/preview/boss-forge.png" width="32%" alt="Forge boss" />
+  <img src="docs/preview/records.png" width="32%" alt="Records" />
+  <img src="docs/preview/abilities.png" width="32%" alt="Abilities in play" />
+  <img src="docs/preview/boss.png" width="32%" alt="Boss fight" />
 </p>
+
+<p align="center"><img src="docs/preview/levels.png" width="70%" alt="The ten level themes" /></p>
 
 > The images above are rendered from the game's own drawing code through a headless
 > harness (see [Verification](#verification)), not captured from a device.
@@ -61,27 +63,30 @@ Ramming enemies during it destroys them.
 your last kill. It resets when you're hit — the multiplier, not the raw score, is
 where big runs are made.
 
-### Sectors
+### Levels
 
-The run moves through five themed sectors, five waves each, then loops at a
-higher difficulty tier. Each sector has its own palette, enemy roster, music
-track and boss.
+The run moves through ten themed levels of 35 waves each, then loops. Every
+level has its own palette, enemy roster, boss pool and music track — but
+**difficulty does not depend on the level**. It is driven purely by the wave
+number, so the run keeps escalating straight through every theme change.
+Clearing a level is a milestone and a score bonus, never a stopping point: the
+next one starts immediately, and harder.
 
-The ramp is deliberately lopsided. The opening is light: two enemy groups on
-wave one drawn from the gentler half of the roster, enemies that fire about a
-quarter slower than baseline, and the slowest projectiles in the game. From
-there enemy health, fire rate, projectile speed and group count all climb, with
-health picking up a quadratic term so a fully-augmented ship still meets
-something that can kill it. Bosses scale on wave squared, cycle their patterns
-faster the deeper you are, and call in escorts from wave 10.
-
-| Sector | Enemies | Boss |
+| | Level | Cast |
 | --- | --- | --- |
-| **NEON REACH** | Drifters, weavers, chargers | **GUARDIAN** — fans, rings, spiral barrage |
-| **CRIMSON BELT** | Chargers, swarmers, lancers, wisps | **WARDEN** — dashes the arena, calls in wings |
-| **VIOLET DEPTHS** | Turrets, orbiters, minelayers, pylons | **HIVE** — spawns broods, pulses rings |
-| **GOLD CIRCUIT** | Splitters, shielders, carriers, lancers | **FORGE** — armour plates block two thirds of its arc |
-| **VOID CORE** | Everything, plus elites | **NULLIFIER** — blinks and answers with mirrored spirals |
+| 1 | **NEON REACH** | Drifters, weavers, chargers |
+| 2 | **CRIMSON BELT** | Chargers, swarmers, lancers, wisps |
+| 3 | **VIOLET DEPTHS** | Turrets, orbiters, minelayers, pylons |
+| 4 | **GOLD CIRCUIT** | Splitters, shielders, carriers, lancers |
+| 5 | **VOID CORE** | Everything at once |
+| 6 | **EMERALD DRIFT** | Splitters, carriers, swarmers, orbiters |
+| 7 | **ASH REACH** | Lancers, shielders, minelayers, chargers |
+| 8 | **AZURE SPIRE** | Wisps, pylons, orbiters, turrets |
+| 9 | **ROSE NEBULA** | Weavers, swarmers, wisps, splitters |
+| 10 | **THE HOLLOW** | The full roster, heavy on elites |
+
+Each level draws its bosses from its own pool, so the seven boss fights inside a
+level vary and the mix differs between levels.
 
 Fifteen enemy types in all. Beyond the basics: **LANCER** holds a lane and
 telegraphs a column of fire, **ORBITER** circles a point firing along its
@@ -100,7 +105,8 @@ Clear a wave and the run pauses for a **system upgrade**: three cards, pick one.
 There are two kinds.
 
 **Abilities** are whole new weapon systems. You can carry at most **three**, and
-the augment bay holds **eight augments in total** — once it is full the only
+the augment bay holds **eight augments in total** (ten with both shop bay
+expansions) — once it is full the only
 offers are level-ups of what you already carry. Early picks are commitments.
 
 | | What it does |
@@ -114,6 +120,8 @@ offers are level-ups of what you already carry. Early picks are commitments.
 | **FLAK** | Lobbed shells that burst into shrapnel mid-flight |
 | **TETHER** | A cutting beam that latches onto the nearest target |
 | **WING** | Two wingmen fly your flanks and fire with you |
+| **VORTEX** | A singularity that drags everything nearby into it |
+| **SENTINEL** | Drops a turret that holds position and fires |
 
 The HUD shows `AUGMENTS n/8` above the lives, and the choice screen shows the
 bay state, so you always know how much room is left.
@@ -134,15 +142,18 @@ levelling to 5 down the path you chose.
 | FLAK | **CLUSTER** — three shells per volley | **AIRBURST** — one shell, enormous burst |
 | TETHER | **LEECH** — the beam feeds your overdrive | **SIPHON** — cuts harder and drags the target in |
 | WING | **ESCORT** — wingmen soak incoming fire | **STRIKE** — wingmen carry missiles |
+| VORTEX | **SINGULARITY** — wider pull, banks caught fire | **IMPLOSION** — collapses into a detonation |
+| SENTINEL | **BATTERY** — two turrets, firing faster | **MORTAR** — the turret lobs shells |
 
 **Stat modules** are the other half of the offer, repeatable and stackable:
 RAPID (fire rate), POWER (damage), VELOCITY (projectile speed), AGILITY
 (handling), MAGNET (pickup radius), GRAZE (overdrive charge), ARMOR (shield
 capacity), SALVAGE (score), REPAIR (hull), COOLANT (ability cooldowns), PIERCE
 (shots punch through one more enemy), CRIT (chance to hit twice) and RECLAIM
-(pickups top up overdrive).
+(pickups top up overdrive), HARDPOINT (raises the main gun's ceiling), EVASION
+(a longer mercy window) and BOUNTY (more, richer gems).
 
-Twenty-two augments in total, nine of them abilities, for eight bay slots.
+Twenty-seven augments in total, eleven of them abilities, for eight bay slots.
 
 Your current kit shows as badges above the lives counter, and in full on the
 pause screen.
@@ -161,7 +172,23 @@ of them a **signature augment** installed free at launch.
 | **Epic** | SABRE (LANCE pre-fitted), HALO (ORBIT pre-fitted, starts shielded), WRAITH (tiny hitbox, +70% graze), VESPER (TETHER pre-fitted), TITAN (five hull segments, very slow trigger) |
 | **Legendary** | NOVA-9 (PULSE Lv2, +25% score), ARCLIGHT (ARC Lv2, +2 damage), ORACLE (WING Lv2, +20% score), PHANTOM (3.4-unit hitbox, double graze) |
 
-Eighteen hulls in all.
+Twenty-four hulls in all. **Summon x10** costs ten pulls' worth of cores and
+guarantees at least one rare or better; duplicates refund as usual.
+
+### Shop
+
+The other place cores go: permanent upgrades that carry into every run — HULL
+PLATING (an extra hull segment), PRIMED GUNS (launch part-upgraded), BAY
+EXPANSION (a ninth and tenth augment slot), SHIELD GENERATOR, CORE MAGNETISM
+(+cores earned), OVERDRIVE PRIMER (start part-charged) and SALVAGE CONTRACT
+(+score). Deliberately weighted towards smoothing the opening and the economy
+rather than raw late-game power.
+
+### Records
+
+A menu screen tracking best score, furthest wave, levels cleared, best combo,
+runs flown, total kills, cores earned, hulls owned and summons, plus a checklist
+of which of the ten levels you have reached.
 
 Duplicates refund cores, scaled by rarity.
 
@@ -169,8 +196,8 @@ Duplicates refund cores, scaled by rarity.
 
 Music and effects are generated at runtime by a small software synth — a step
 sequencer driving square, saw, triangle and noise voices through an envelope,
-a sweeping one-pole filter and a soft clipper. Six tracks (menu plus one per
-sector), each built from four alternating bars with an arpeggio layer, a
+a sweeping one-pole filter and a soft clipper. Eleven tracks (menu plus one per
+level), each built from four alternating bars with an arpeggio layer, a
 detuned lead, octave-jumping bass and a drum fill closing every fourth bar.
 Boss waves switch the arrangement to a busier mix. No audio files ship with
 the game. Music, effects and haptics each toggle from the title screen.
@@ -217,7 +244,8 @@ app/src/main/java/com/neonvoid/game/
                     director, boss patterns, scoring
   Augments.kt       Augment catalogue, evolution branches, offer generation
                     and every stat the loadout derives
-  Sectors.kt        Themed sector table: palettes, rosters, bosses, music
+  Levels.kt         The ten level themes: palettes, rosters, boss pools, music
+  Shop.kt           Permanent core-bought upgrades and the bonuses they grant
   EnemyAI.kt        Per-kind enemy behaviour
   Bosses.kt         The five boss archetypes and their phases
   Ships.kt          Hull roster, rarities, gacha rolls, hull silhouettes
@@ -247,7 +275,8 @@ Most of the feel lives in a handful of constants:
 - `World.GRAZE_R`, `OD_DURATION`, `COMBO_WINDOW` — the risk/reward loop
 - `Aug.MAX_SLOTS`, `MAX_ABILITIES`, `BASE_MAX`, `EVOLVED_MAX` — how specialised
   a run gets and how hard the choices bite
-- `Sectors.list` — sector palettes, enemy rosters and boss assignment
+- `Levels.list` / `WAVES_PER_LEVEL` — level themes and chapter length
+- `Shop.items` — permanent upgrade costs and caps
 - `ShipDex.list` / `Rarity.weights` — hull stats and pull rates
 - `Loadout` derived getters — what each stat module is worth
 - `World.dropLoot` — pickup rates and the weapon pity curve
@@ -270,7 +299,7 @@ validated headlessly here:
   progression, boss spawns and phases, scoring, weapon ramp, augment offers and
   that no wave can stall; runs without invulnerability confirm the damage and
   game-over paths.
-- Every ability path forced and played: all 27 combinations (nine abilities, base
+- Every ability path forced and played: all 33 combinations (eleven abilities, base
   plus both evolutions) run 150 simulated seconds each without a crash, and land
   within a reasonable band of each other on wave reached and score.
 - The soundtrack rendered offline to WAV and checked for level, clipping and

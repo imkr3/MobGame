@@ -28,6 +28,30 @@ class Nova {
     val hit = BooleanArray(World.ENEMY_CAP)
 }
 
+/** A singularity that drags everything nearby into itself. */
+class Vortex {
+    var active = false
+    var x = 0f; var y = 0f
+    var r = 90f
+    var life = 0f; var maxLife = 3f
+    var dps = 14f
+    var pull = 220f
+    var banks = false
+    var implodes = false
+    var damage = 0f
+}
+
+/** A deployed gun that holds position and fires up the screen. */
+class Turret {
+    var active = false
+    var x = 0f; var y = 0f
+    var life = 0f; var maxLife = 6f
+    var fireT = 0f
+    var every = 0.5f
+    var damage = 4
+    var mortar = false
+}
+
 class Bolt {
     var active = false
     var n = 0
@@ -49,6 +73,8 @@ class Arsenal(private val fx: Fx) {
     private val novas = Array(6) { Nova() }
     private val bolts = Array(10) { Bolt() }
     private val nodeCd = FloatArray(6)
+    private val vortices = Array(4) { Vortex() }
+    private val turrets = Array(4) { Turret() }
 
     private var lanceT = 0f
     private var swarmT = 0f
@@ -57,6 +83,8 @@ class Arsenal(private val fx: Fx) {
     private var sentryT = 0f
     private var flakT = 0f
     private var wingT = 0f
+    private var vortexT = 0f
+    private var sentinelT = 0f
     private var tetherIdx = -1
     private var tetherTick = 0f
     var orbitAngle = 0f
@@ -69,6 +97,9 @@ class Arsenal(private val fx: Fx) {
         nodeCd.fill(0f)
         lanceT = 2.5f; swarmT = 1.2f; arcT = 1.4f; pulseT = 4f; sentryT = 0.9f
         flakT = 1.6f; wingT = 0.5f; tetherIdx = -1; tetherTick = 0f
+        vortexT = 3f; sentinelT = 2.5f
+        for (v in vortices) v.active = false
+        for (t in turrets) t.active = false
         orbitAngle = 0f
     }
 
@@ -112,6 +143,142 @@ class Arsenal(private val fx: Fx) {
         if (lo.has(Aug.FLAK)) tickFlak(dt, world)
         if (lo.has(Aug.TETHER)) tickTether(dt, world) else tetherIdx = -1
         if (lo.has(Aug.WING)) tickWing(dt, world)
+        if (lo.has(Aug.VORTEX)) tickVortex(dt, world)
+        if (lo.has(Aug.SENTINEL)) tickSentinel(dt, world)
+        updateVortices(dt, world)
+        updateTurrets(dt, world)
+    }
+
+    // -------------------------------------------------------------- VORTEX
+
+    private fun tickVortex(dt: Float, world: World) {
+        val lo = world.loadout
+        val l = lo.lvl[Aug.VORTEX]
+        val br = lo.branch[Aug.VORTEX]
+        vortexT -= dt
+        if (vortexT > 0f) return
+        val p = world.player
+        val v = vortices.firstOrNull { !it.active } ?: return
+        v.active = true
+        v.x = clamp(p.x + rnd(-60f, 60f), 60f, world.w - 60f)
+        v.y = clamp(p.y - 250f, world.h * 0.12f, world.h * 0.7f)
+        v.banks = false
+        v.implodes = false
+        when (br) {
+            Aug.A -> {                                   // SINGULARITY
+                vortexT = cd(world, clamp(5.4f - 0.2f * (l - 3), 4.2f, 5.4f))
+                v.r = 128f + 8f * (l - 3); v.dps = 20f + 5f * (l - 3)
+                v.maxLife = 3.6f; v.pull = 300f; v.banks = true
+            }
+            Aug.B -> {                                   // IMPLOSION
+                vortexT = cd(world, clamp(5.0f - 0.2f * (l - 3), 3.8f, 5.0f))
+                v.r = 104f; v.dps = 12f
+                v.maxLife = 2.2f; v.pull = 380f; v.implodes = true
+                v.damage = 46f + 12f * (l - 3)
+            }
+            else -> {
+                vortexT = cd(world, 7f - 0.4f * l)
+                v.r = 70f + 12f * l; v.dps = 9f + 4f * l
+                v.maxLife = 2.6f + 0.2f * l; v.pull = 200f + 30f * l
+            }
+        }
+        v.life = v.maxLife
+        fx.shockwave(v.x, v.y, v.r, Palette.VIOLET, 0.4f, 3f)
+        world.sound?.sfx(Sfx.PICKUP)
+    }
+
+    private fun updateVortices(dt: Float, world: World) {
+        for (v in vortices) {
+            if (!v.active) continue
+            v.life -= dt
+            if (v.life <= 0f) {
+                if (v.implodes) {
+                    for (e in world.enemies) {
+                        if (!e.active) continue
+                        if (len(e.x - v.x, e.y - v.y) <= v.r * 1.2f + e.r) world.hit(e, v.damage, e.x, e.y, true)
+                    }
+                    fx.shockwave(v.x, v.y, v.r * 1.8f, Palette.WHITE, 0.5f, 4f)
+                    fx.burst(v.x, v.y, 32, Palette.VIOLET, 380f, 3f, 0.7f, true)
+                    fx.shake(0.3f)
+                    world.sound?.sfx(Sfx.EXPLODE)
+                }
+                v.active = false
+                continue
+            }
+            for (e in world.enemies) {
+                if (!e.active || e.kind == EK.BOSS) continue
+                val d = len(e.x - v.x, e.y - v.y)
+                if (d < v.r && d > 0.01f) {
+                    val k = (1f - d / v.r) * v.pull * dt
+                    e.x += (v.x - e.x) / d * k
+                    e.y += (v.y - e.y) / d * k
+                    world.hit(e, v.dps * dt, e.x, e.y, chance(0.08f))
+                }
+            }
+            world.pushBulletsWithin(v.x, v.y, v.r, -v.pull * 1.4f)
+            if (v.banks) world.bankBulletsWithin(v.x, v.y, v.r * 0.35f)
+        }
+    }
+
+    // ------------------------------------------------------------ SENTINEL
+
+    private fun tickSentinel(dt: Float, world: World) {
+        val lo = world.loadout
+        val l = lo.lvl[Aug.SENTINEL]
+        val br = lo.branch[Aug.SENTINEL]
+        sentinelT -= dt
+        if (sentinelT > 0f) return
+        val p = world.player
+        if (!p.alive) return
+        val count = if (br == Aug.A) 2 else 1
+        val bonus = lo.damageBonus() + world.ship.damageBonus
+        for (i in 0 until count) {
+            val t = turrets.firstOrNull { !it.active } ?: return
+            t.active = true
+            t.x = clamp(p.x + (i - (count - 1) * 0.5f) * 54f, 30f, world.w - 30f)
+            t.y = p.y + 10f
+            t.mortar = br == Aug.B
+            t.maxLife = when (br) {
+                Aug.A -> 6.5f + 0.4f * (l - 3)
+                Aug.B -> 7.5f + 0.4f * (l - 3)
+                else -> 5f + 0.6f * l
+            }
+            t.life = t.maxLife
+            t.every = when (br) {
+                Aug.A -> 0.34f
+                Aug.B -> 1.1f
+                else -> clamp(0.6f - 0.05f * l, 0.35f, 0.6f)
+            }
+            t.damage = when (br) {
+                Aug.A -> 3 + l + bonus
+                Aug.B -> 5 + l + bonus
+                else -> 3 + l + bonus
+            }
+            t.fireT = 0.2f
+            fx.shockwave(t.x, t.y, 40f, Palette.SKY, 0.35f, 2.5f)
+        }
+        sentinelT = cd(world, if (br == Aug.A) 7.5f else 7f - 0.3f * l)
+    }
+
+    private fun updateTurrets(dt: Float, world: World) {
+        for (t in turrets) {
+            if (!t.active) continue
+            t.life -= dt
+            if (t.life <= 0f) {
+                t.active = false
+                fx.burst(t.x, t.y, 10, Palette.SKY, 180f, 2f, 0.4f)
+                continue
+            }
+            t.fireT -= dt
+            if (t.fireT <= 0f) {
+                t.fireT = t.every
+                if (t.mortar) {
+                    world.flakShell(t.x, t.y - 8f, rnd(-50f, 50f), -500f, 6f, t.damage, 7, 0.55f, 0f)
+                } else {
+                    world.allyBullet(t.x, t.y - 8f, 0f, -840f, 3.4f, t.damage, Palette.SKY, 1)
+                }
+            }
+        }
     }
 
     /** Ability cooldowns, shortened by the COOLANT module. */
@@ -591,6 +758,30 @@ class Arsenal(private val fx: Fx) {
             for (i in 0 until b.n - 1) {
                 Neon.line(c, b.px[i], b.py[i], b.px[i + 1], b.py[i + 1], fade(b.color, t), b.width * t + 0.8f, 1.2f)
             }
+        }
+
+        // vortices
+        for (v in vortices) {
+            if (!v.active) continue
+            val t = clamp(v.life / v.maxLife, 0f, 1f)
+            val col = if (v.implodes) Palette.RED else Palette.VIOLET
+            val spin = orbitAngle * 2.4f
+            for (i in 0 until 3) {
+                val rr = v.r * (0.4f + 0.3f * i) * (0.85f + 0.15f * sin(spin + i))
+                Neon.ring(c, v.x, v.y, rr, fade(col, 0.5f * t), 2.2f, 1f)
+            }
+            Neon.ring(c, v.x, v.y, v.r, fade(col, 0.28f * t), 1.6f, 0.8f)
+            Neon.orb(c, v.x, v.y, 7f + 4f * sin(spin), fade(Palette.WHITE, 0.85f * t), 1.3f)
+        }
+
+        // sentinel turrets
+        for (t in turrets) {
+            if (!t.active) continue
+            val k = clamp(t.life / t.maxLife, 0f, 1f)
+            val col = if (t.mortar) Palette.AMBER else Palette.SKY
+            Neon.ring(c, t.x, t.y, 11f, fade(col, 0.9f * k), 2.2f, 1f)
+            Neon.line(c, t.x, t.y - 4f, t.x, t.y - 16f, fade(col, 0.9f * k), 2.6f, 0.9f)
+            Neon.orb(c, t.x, t.y, 3.6f, fade(Palette.WHITE, 0.8f * k), 0.8f)
         }
 
         // tether beam
