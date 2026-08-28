@@ -19,6 +19,12 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
   <img src="docs/preview/boss.png" width="32%" alt="Boss fight" />
 </p>
 
+<p align="center">
+  <img src="docs/preview/coop.png" width="32%" alt="Co-op lobby" />
+  <img src="docs/preview/coop-host.png" width="32%" alt="Hosting" />
+  <img src="docs/preview/coop-join.png" width="32%" alt="Joining" />
+</p>
+
 <p align="center"><img src="docs/preview/levels.png" width="70%" alt="The ten level themes" /></p>
 
 > The images above are rendered from the game's own drawing code through a headless
@@ -175,6 +181,28 @@ of them a **signature augment** installed free at launch.
 Twenty-four hulls in all. **Summon x10** costs ten pulls' worth of cores and
 guarantees at least one rare or better; duplicates refund as usual.
 
+### Co-op over Wi-Fi
+
+Two phones on the same network fly one run together. One hosts, the other joins
+by typing the host's address, which the hosting screen shows.
+
+The host is authoritative: it runs the whole simulation, so the two screens can
+never disagree about where a bullet is. The client sends input and renders the
+snapshots it gets back at 30 Hz, while **predicting its own ship locally** so the
+thumb still feels instant — it replays un-acknowledged input on top of the host's
+authoritative movement target, using the handling value the host sends, which
+keeps the predicted position within a couple of units of the truth.
+
+Both pilots keep their own hull, hull segments, shields and **separate augment
+loadouts**; score, combo and waves are shared. Clearing a wave opens a draft: the
+host picks first, then the partner, each from their own offer, with a "partner is
+choosing" overlay in between. A downed pilot respawns while the other is still
+flying — the run only ends when both are out. If the partner drops, the host
+carries on solo.
+
+Co-op needs `INTERNET` and `ACCESS_NETWORK_STATE`, used only for a socket between
+the two phones. The game makes no other network calls.
+
 ### Shop
 
 The other place cores go: permanent upgrades that carry into every run — HULL
@@ -246,6 +274,10 @@ app/src/main/java/com/neonvoid/game/
                     and every stat the loadout derives
   Levels.kt         The ten level themes: palettes, rosters, boss pools, music
   Shop.kt           Permanent core-bought upgrades and the bonuses they grant
+  PlayerSlot.kt     One pilot: ship, loadout, ability systems
+  Protocol.kt       Co-op wire format: handshake, input, snapshots, draft
+  NetLink.kt        Length-prefixed message stream over a socket
+  Coop.kt           Host and client roles, prediction and reconciliation
   EnemyAI.kt        Per-kind enemy behaviour
   Bosses.kt         The five boss archetypes and their phases
   Ships.kt          Hull roster, rarities, gacha rolls, hull silhouettes
@@ -299,6 +331,12 @@ validated headlessly here:
   progression, boss spawns and phases, scoring, weapon ramp, augment offers and
   that no wave can stall; runs without invulnerability confirm the damage and
   game-over paths.
+- Co-op run end to end over a real loopback socket: a host and a client
+  handshake, play 150 simulated seconds, and the client's mirror matches the host
+  exactly on score and wave while receiving ~3,300 snapshots. The augment draft
+  crosses the wire, and pulling the partner's plug leaves the host flying solo
+  rather than crashing. Local-ship prediction lands within 1.8 units of the host
+  on average.
 - Every ability path forced and played: all 33 combinations (eleven abilities, base
   plus both evolutions) run 150 simulated seconds each without a crash, and land
   within a reasonable band of each other on wave reached and score.

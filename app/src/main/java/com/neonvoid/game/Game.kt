@@ -27,7 +27,7 @@ class Game(context: Context) {
         const val UP = 2
     }
 
-    enum class State { MENU, PLAYING, PAUSED, GAME_OVER, AUGMENT, HANGAR, REVEAL, SHOP, RECORDS }
+    enum class State { MENU, PLAYING, PAUSED, GAME_OVER, AUGMENT, HANGAR, REVEAL, SHOP, RECORDS, COOP }
 
     val prefs = Prefs(context)
     private val haptics = Haptics(context).also { it.enabled = prefs.hapticsOn }
@@ -60,6 +60,16 @@ class Game(context: Context) {
     private var revealRefund = 0
     private var coresEarned = 0
     private var revealMulti: List<Ship> = emptyList()
+
+    // ---- co-op ----------------------------------------------------------
+    private var netRole = NetRole.NONE
+    private val host = CoopHost()
+    private val client = CoopClient()
+    /** 0 = choose a side, 1 = hosting, 2 = joining. */
+    private var coopStage = 0
+    private var typedAddress = ""
+    private var coopStatus = ""
+    private var partnerPicking = false
     private var revealMultiNew: List<Boolean> = emptyList()
 
     private val vignette = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -133,9 +143,18 @@ class Game(context: Context) {
     }
 
     private fun openAugmentChoice() {
+        if (partnerPicking) return
         offers = world.rollAugments(3)
         if (offers.isEmpty()) {          // everything maxed: skip the screen
             world.applyAugment(AugCard(Aug.SALVAGE, 0, "SALVAGE", "BONUS", "", Palette.AMBER))
+            return
+        }
+        // In co-op the host drafts first, then hands the choice to the partner.
+        if (netRole == NetRole.HOST && world.augmentSlot == 1) {
+            host.sendOffer(1, offers)
+            host.pendingPick = -1
+            partnerPicking = true
+            world.hideBanner()
             return
         }
         hud.prepareCards(offers)
@@ -148,6 +167,7 @@ class Game(context: Context) {
     /** Returns true when the game consumed the back gesture. */
     fun onBack(): Boolean = when (state) {
         State.AUGMENT -> true          // a choice has to be made
+        State.COOP -> { leaveCoop(); state = State.MENU; true }
         State.REVEAL -> { state = State.HANGAR; true }
         State.HANGAR, State.SHOP, State.RECORDS -> { state = State.MENU; true }
         State.PLAYING -> { state = State.PAUSED; true }
@@ -205,7 +225,7 @@ class Game(context: Context) {
     }
 
     private fun buttonsFor(): List<Button> = when (state) {
-        State.MENU -> listOf(hud.play, hud.hangar, hud.shop, hud.records, hud.music, hud.sfx, hud.haptic)
+        State.MENU -> listOf(hud.play, hud.hangar, hud.shop, hud.records, hud.coop, hud.music, hud.sfx, hud.haptic)
         State.PLAYING -> listOf(hud.pause)
         State.PAUSED -> listOf(hud.resume, hud.restart, hud.quit)
         State.GAME_OVER -> listOf(hud.retry, hud.toMenu)
@@ -217,6 +237,13 @@ class Game(context: Context) {
             add(hud.back); addAll(hud.shopRows)
         }
         State.RECORDS -> listOf(hud.back)
+        State.COOP -> when (coopStage) {
+            0 -> listOf(hud.back, hud.hostGame, hud.joinGame)
+            1 -> listOf(hud.back, hud.startCoop)
+            else -> ArrayList<Button>(hud.keypad.size + 2).apply {
+                add(hud.back); add(hud.connectBtn); addAll(hud.keypad)
+            }
+        }
         State.REVEAL -> emptyList()
     }
 
@@ -250,7 +277,7 @@ class Game(context: Context) {
 
         // Overdrive fires on press - either on its button or with a second finger.
         if (hud.overdrive.contains(x, y) || moveId != -1) {
-            world.triggerOverdrive()
+            if (netRole == NetRole.CLIENT) client.queueOverdrive() else world.triggerOverdrive()
             if (hud.overdrive.contains(x, y)) return
         }
 
@@ -263,7 +290,9 @@ class Game(context: Context) {
 
     private fun onMove(id: Int, x: Float, y: Float) {
         if (state == State.PLAYING && id == moveId) {
-            world.moveBy(x - lastX, y - lastY)
+            val dx = x - lastX
+            val dy = y - lastY
+            if (netRole == NetRole.CLIENT) client.queueInput(dx, dy) else world.moveBy(dx, dy)
             lastX = x
             lastY = y
         }
@@ -297,6 +326,10 @@ class Game(context: Context) {
             state = State.MENU
             return
         }
+        if (state == State.COOP) {
+            handleCoopButton(b)
+            return
+        }
         if (state == State.HANGAR) {
             when (b) {
                 hud.summon -> summon()
@@ -316,7 +349,13 @@ class Game(context: Context) {
             for (i in 0 until hud.cardCount) {
                 if (hud.cards[i].btn === b) {
                     val card = hud.cards[i].card ?: return
-                    world.applyAugment(card)
+                    if (netRole == NetRole.CLIENT) {
+                        // the host owns the loadout; mirror it locally for the HUD
+                        client.sendPick(i)
+                        world.slots[0].loadout.apply(card)
+                    } else {
+                        world.applyAugment(card)
+                    }
                     state = State.PLAYING
                     return
                 }
@@ -333,15 +372,76 @@ class Game(context: Context) {
             hud.hangar -> state = State.HANGAR
             hud.shop -> state = State.SHOP
             hud.records -> state = State.RECORDS
+            hud.coop -> { state = State.COOP; coopStage = 0; coopStatus = ""; typedAddress = prefs.lastHost }
             hud.music -> { prefs.musicOn = !prefs.musicOn; audio.applyPrefs() }
             hud.sfx -> { prefs.sfxOn = !prefs.sfxOn; audio.applyPrefs() }
             hud.pause -> state = State.PAUSED
             hud.resume -> state = State.PLAYING
             hud.restart -> startRun()
-            hud.quit -> state = State.MENU
-            hud.retry -> startRun()
-            hud.toMenu -> state = State.MENU
+            hud.quit -> { leaveCoop(); state = State.MENU }
+            hud.retry -> { leaveCoop(); startRun() }
+            hud.toMenu -> { leaveCoop(); state = State.MENU }
         }
+    }
+
+    // ------------------------------------------------------------- co-op
+
+    private fun handleCoopButton(b: Button) {
+        when {
+            b === hud.back -> {
+                leaveCoop()
+                state = State.MENU
+            }
+            b === hud.hostGame -> {
+                netRole = NetRole.HOST
+                coopStage = 1
+                coopStatus = if (host.start()) "WAITING FOR PARTNER" else host.message
+            }
+            b === hud.joinGame -> {
+                netRole = NetRole.CLIENT
+                coopStage = 2
+                coopStatus = "ENTER THE HOST ADDRESS"
+            }
+            b === hud.startCoop -> startCoopRun()
+            b === hud.connectBtn -> {
+                if (typedAddress.isNotEmpty()) {
+                    prefs.lastHost = typedAddress
+                    client.connect(typedAddress, prefs.selectedShip, "PARTNER")
+                    coopStatus = "CONNECTING"
+                }
+            }
+            else -> {
+                val k = hud.keypad.indexOfFirst { it === b }
+                if (k >= 0) {
+                    typedAddress = when (k) {
+                        11 -> typedAddress.dropLast(1)
+                        9 -> if (typedAddress.length < 15) "$typedAddress." else typedAddress
+                        10 -> if (typedAddress.length < 15) typedAddress + "0" else typedAddress
+                        else -> if (typedAddress.length < 15) typedAddress + (k + 1) else typedAddress
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startCoopRun() {
+        world.ship = ShipDex.byId(prefs.selectedShip)
+        world.meta = Shop.meta(prefs)
+        world.joinPartner(ShipDex.byId(host.partnerShipId), Meta(), host.partnerName)
+        world.reset()
+        host.beginRun()
+        newBest = false
+        partnerPicking = false
+        state = State.PLAYING
+        clearPressed()
+    }
+
+    private fun leaveCoop() {
+        host.stop()
+        client.stop()
+        netRole = NetRole.NONE
+        world.dropPartner()
+        partnerPicking = false
     }
 
     private fun buyUpgrade(index: Int) {
@@ -429,11 +529,33 @@ class Game(context: Context) {
                 bg.update(dt, world.intensity * 0.35f)
                 fx.update(dt)
             }
+            State.COOP -> {
+                bg.update(dt, 0.12f)
+                fx.update(dt)
+                pumpLobby(dt)
+            }
             State.PLAYING -> {
                 bg.update(dt, world.intensity)
+                if (netRole == NetRole.CLIENT) {
+                    updateAsClient(dt)
+                    return
+                }
                 world.update(dt)
+                if (netRole == NetRole.HOST) host.pumpRun(world, dt)
+                if (netRole == NetRole.HOST && host.stage == NetStage.FAILED) {
+                    netRole = NetRole.NONE
+                    world.dropPartner()
+                }
                 if (world.pendingAugment) openAugmentChoice()
+                if (partnerPicking && host.pendingPick >= 0) {
+                    val idx = host.pendingPick.coerceIn(0, offers.size - 1)
+                    if (offers.isNotEmpty()) world.applyAugment(offers[idx])
+                    host.pendingPick = -1
+                    partnerPicking = false
+                    if (world.pendingAugment) openAugmentChoice()
+                }
                 if (world.gameOver) {
+                    if (netRole == NetRole.HOST) host.sendOver(world)
                     state = State.GAME_OVER
                     newBest = prefs.submit(world.score, world.wave, world.maxCombo)
                     coresEarned = (prefs.coresFor(world.score, world.wave) * Shop.coreMultiplier(prefs)).toInt()
@@ -450,6 +572,64 @@ class Game(context: Context) {
                 bg.update(dt, world.intensity * 0.4f)
                 fx.update(dt)
             }
+        }
+    }
+
+    private fun pumpLobby(dt: Float) {
+        when (netRole) {
+            NetRole.HOST -> {
+                host.pumpLobby(prefs.selectedShip, "HOST")
+                coopStatus = when {
+                    host.stage == NetStage.FAILED -> host.message
+                    host.partnerName.isNotEmpty() -> "PARTNER READY - LAUNCH WHEN YOU ARE"
+                    else -> "WAITING FOR PARTNER"
+                }
+            }
+            NetRole.CLIENT -> {
+                client.pump(dt)
+                coopStatus = when (client.stage) {
+                    NetStage.FAILED -> client.message
+                    NetStage.LOBBY -> "CONNECTED - WAITING FOR HOST"
+                    NetStage.RUNNING -> "LAUNCHING"
+                    else -> client.message
+                }
+                if (client.stage == NetStage.RUNNING) {
+                    world.ship = ShipDex.byId(prefs.selectedShip)
+                    world.prepareMirror(ShipDex.byId(prefs.selectedShip), ShipDex.byId(client.hostShipId))
+                    client.setBounds(vw, vh)
+                    state = State.PLAYING
+                    clearPressed()
+                }
+            }
+            else -> {}
+        }
+    }
+
+    /** The client never simulates: it sends input and mirrors what comes back. */
+    private fun updateAsClient(dt: Float) {
+        val live = client.pump(dt)
+        client.predict(dt)
+        fx.update(dt)
+        if (client.haveSnapshot) {
+            world.applySnapshot(client.snapshot, client.mySlot, client.localX, client.localY)
+        }
+        if (client.offer != null && state == State.PLAYING) {
+            offers = client.offer!!.cards
+            hud.prepareCards(offers)
+            world.hideBanner()
+            state = State.AUGMENT
+            lockoutT = 0.3f
+            clearPressed()
+        }
+        if (!live || client.stage == NetStage.ENDED || client.stage == NetStage.FAILED) {
+            if (client.finalScore > 0) {
+                world.applyFinal(client.finalScore, client.finalWave, 0, 0, 0)
+            }
+            newBest = prefs.submit(world.score, world.wave, world.maxCombo)
+            netRole = NetRole.NONE
+            state = State.GAME_OVER
+            lockoutT = 0.9f
+            clearPressed()
         }
     }
 
@@ -476,9 +656,20 @@ class Game(context: Context) {
             State.PAUSED -> { hud.drawGame(c, world, time, false); hud.drawPause(c, world, time) }
             State.GAME_OVER -> { hud.drawGame(c, world, time, false); hud.drawGameOver(c, world, newBest, time) }
             State.AUGMENT -> { hud.drawGame(c, world, time, false); hud.drawAugment(c, world, time) }
+            State.PLAYING -> if (partnerPicking) {
+                hud.drawGame(c, world, time, false); hud.drawPartnerPicking(c, time)
+            } else {
+                hud.drawGame(c, world, time)
+            }
             State.HANGAR -> hud.drawHangar(c, prefs.selectedShip, time)
             State.SHOP -> hud.drawShop(c, time)
             State.RECORDS -> hud.drawRecords(c, time)
+            State.COOP -> hud.drawCoop(
+                c, coopStage,
+                if (netRole == NetRole.HOST) "HOSTING" else "JOINING",
+                coopStatus, host.localAddress(), typedAddress,
+                netRole == NetRole.HOST && host.partnerName.isNotEmpty(), time
+            )
             State.REVEAL ->
                 if (revealMulti.isEmpty()) hud.drawReveal(c, revealShip, revealNew, revealRefund, time)
                 else hud.drawRevealMulti(c, revealMulti, revealMultiNew, revealRefund, time)

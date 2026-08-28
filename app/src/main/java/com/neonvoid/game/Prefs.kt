@@ -66,6 +66,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("total_kills", 0)
         set(v) = sp.edit().putInt("total_kills", v).apply()
 
+    /** Last host address typed in the co-op lobby. */
+    var lastHost: String
+        get() = sp.getString("last_host", "") ?: ""
+        set(v) = sp.edit().putString("last_host", v).apply()
+
     var hapticsOn: Boolean
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit().putBoolean("haptics", v).apply()

@@ -342,6 +342,16 @@ object Draw {
         }
     }
 
+    /** P1 / P2 marker above a ship, only drawn in co-op. */
+    fun pilotTag(c: Canvas, p: Player, index: Int, timeNow: Float) {
+        val col = if (index == 0) Palette.CYAN else Palette.LIME
+        val bob = sin(timeNow * 3f + index) * 1.5f
+        Neon.label(
+            c, if (index == 0) "P1" else "P2", p.x, p.y - p.bodyR - 12f + bob, 11f,
+            fade(col, 0.85f), Paint.Align.CENTER, 0.5f, 0.16f, Neon.FONT_BODY
+        )
+    }
+
     fun enemy(c: Canvas, e: Enemy, timeNow: Float) {
         val flash = e.hitFlash
         val col = if (flash > 0f) mixColor(e.color, Palette.WHITE, clamp(flash * 3f, 0f, 0.85f)) else e.color

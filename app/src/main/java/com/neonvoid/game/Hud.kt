@@ -63,6 +63,13 @@ class Hud(private val prefs: Prefs) {
     val shop = Button("SHOP", Palette.LIME)
     val records = Button("RECORDS", Palette.SKY)
     val shopRows = Array(Shop.COUNT) { Button("", Palette.DIM) }
+    val coop = Button("CO-OP", Palette.ROSE)
+    val hostGame = Button("HOST GAME", Palette.CYAN)
+    val joinGame = Button("JOIN GAME", Palette.LIME)
+    val startCoop = Button("LAUNCH", Palette.AMBER)
+    val connectBtn = Button("CONNECT", Palette.LIME)
+    /** Digits 0-9, then dot, then backspace. */
+    val keypad = Array(12) { Button("", Palette.SKY) }
     val shipCells = Array(ShipDex.list.size) { Button("", Palette.DIM) }
 
     /** One offered augment: its card geometry, hit target and pre-wrapped copy. */
@@ -97,7 +104,19 @@ class Hud(private val prefs: Prefs) {
         val halfW = w * 0.305f
         hangar.place(cx - halfW / 2 - 5f, menuTop + 72f, halfW, 48f)
         shop.place(cx + halfW / 2 + 5f, menuTop + 72f, halfW, 48f)
-        records.place(cx, menuTop + 128f, w * 0.42f, 42f)
+        val halfW2 = w * 0.305f
+        records.place(cx - halfW2 / 2 - 5f, menuTop + 128f, halfW2, 42f)
+        coop.place(cx + halfW2 / 2 + 5f, menuTop + 128f, halfW2, 42f)
+
+        hostGame.place(cx, h * 0.34f, w * 0.62f, 58f)
+        joinGame.place(cx, h * 0.34f + 76f, w * 0.62f, 58f)
+        startCoop.place(cx, h * 0.62f, w * 0.62f, 58f)
+        connectBtn.place(cx, h * 0.70f, w * 0.5f, 52f)
+        for (i in keypad.indices) {
+            val col = i % 3
+            val row = i / 3
+            keypad[i].place(cx + (col - 1) * (w * 0.22f), h * 0.40f + row * 60f, w * 0.20f, 52f)
+        }
         val tw = w * 0.185f
         music.place(cx - tw - 8f, menuTop + 182f, tw, 38f)
         sfx.place(cx, menuTop + 182f, tw, 38f)
@@ -233,6 +252,14 @@ class Hud(private val prefs: Prefs) {
         }
 
 
+        if (world.coop) {
+            val partner = world.slots[1].player
+            Neon.label(
+                c, if (partner.lives > 0) "CO-OP" else "PARTNER DOWN", w - 20f, top + 44f, 11f,
+                if (partner.lives > 0) Palette.ROSE else Palette.RED,
+                Paint.Align.RIGHT, 0.4f, 0.2f, Neon.FONT_BODY
+            )
+        }
         drawBadges(c, world)
         drawOverdrive(c, world, time)
         if (showBanner) drawBanner(c, world, time)
@@ -290,6 +317,7 @@ class Hud(private val prefs: Prefs) {
 
     fun drawMenu(c: Canvas, time: Float) {
         val cx = w * 0.5f
+        val menuTop = h * 0.545f
         val float = sin(time * 1.4f) * 5f
 
         shipIcon(c, cx, h * 0.30f + float, 26f, Palette.CYAN)
@@ -304,14 +332,20 @@ class Hud(private val prefs: Prefs) {
         music.color = if (prefs.musicOn) Palette.VIOLET else Palette.DIM
         sfx.label = "SFX"
         sfx.color = if (prefs.sfxOn) Palette.VIOLET else Palette.DIM
-        hangar.label = "HANGAR - ${ShipDex.byId(prefs.selectedShip).name}"
+        hangar.label = "HANGAR"
         drawButton(c, play, time, true)
         drawButton(c, hangar, time)
         drawButton(c, shop, time)
         drawButton(c, records, time)
+        drawButton(c, coop, time)
         drawButton(c, music, time)
         drawButton(c, sfx, time)
         drawButton(c, haptic, time)
+
+        Neon.label(
+            c, "FLYING  ${ShipDex.byId(prefs.selectedShip).name}", cx, menuTop + 158f, 11f,
+            ShipDex.byId(prefs.selectedShip).color, Paint.Align.CENTER, 0.4f, 0.2f, Neon.FONT_BODY
+        )
 
         val statY = h * 0.845f
         Neon.label(c, "BEST  ${formatScore(prefs.bestScore)}", cx, statY, 20f, Palette.AMBER, Paint.Align.CENTER, 0.7f, 0.14f, Neon.FONT_NUM)
@@ -439,6 +473,76 @@ class Hud(private val prefs: Prefs) {
         drawButton(c, back, time)
         Neon.label(c, "A TEN-PULL GUARANTEES RARE OR BETTER", cx, h * 0.755f, 10.5f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.12f, Neon.FONT_BODY)
         Neon.label(c, "EARN CORES BY FLYING - SCORE AND WAVES BOTH PAY", cx, h * 0.745f, 11f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.14f, Neon.FONT_BODY)
+    }
+
+    /** Lobby for LAN co-op: pick a side, then host or dial in. */
+    fun drawCoop(
+        c: Canvas,
+        stage: Int,
+        statusTitle: String,
+        statusLine: String,
+        address: String,
+        typed: String,
+        canLaunch: Boolean,
+        time: Float
+    ) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xF203010A.toInt())
+        val cx = w * 0.5f
+        val pulse = 0.6f + 0.4f * sin(time * 4f)
+        Neon.label(c, "CO-OP", cx, h * 0.10f, 34f, Palette.ROSE, Paint.Align.CENTER, 1f, 0.32f)
+        Neon.label(c, "TWO SHIPS, ONE RUN, SAME WI-FI", cx, h * 0.10f + 24f, 11f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.18f, Neon.FONT_BODY)
+
+        when (stage) {
+            0 -> {   // choose a side
+                drawButton(c, hostGame, time, true)
+                drawButton(c, joinGame, time, true)
+                Neon.label(c, "THE HOST RUNS THE GAME.", cx, h * 0.56f, 12f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.08f, Neon.FONT_BODY)
+                Neon.label(c, "BOTH PHONES MUST BE ON THE SAME NETWORK.", cx, h * 0.56f + 18f, 12f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.08f, Neon.FONT_BODY)
+            }
+            1 -> {   // hosting
+                Neon.label(c, statusTitle, cx, h * 0.30f, 22f, fade(Palette.CYAN, pulse), Paint.Align.CENTER, 0.8f, 0.2f)
+                Neon.panel(c, w * 0.12f, h * 0.36f, w * 0.88f, h * 0.46f, 12f, fade(Palette.CYAN, 0.08f), fade(Palette.CYAN, 0.7f), 1.8f, 0.8f)
+                Neon.label(c, "YOUR ADDRESS", cx, h * 0.39f, 11f, Palette.DIM, Paint.Align.CENTER, 0.25f, 0.24f, Neon.FONT_BODY)
+                Neon.label(c, address, cx, h * 0.435f, 26f, Palette.WHITE, Paint.Align.CENTER, 0.7f, 0.06f, Neon.FONT_NUM)
+                Neon.label(c, statusLine, cx, h * 0.52f, 14f, Palette.LIME, Paint.Align.CENTER, 0.5f, 0.16f)
+                startCoop.color = if (canLaunch) Palette.AMBER else Palette.DIM
+                drawButton(c, startCoop, time, canLaunch)
+            }
+            else -> { // joining
+                Neon.label(c, "HOST ADDRESS", cx, h * 0.26f, 13f, Palette.DIM, Paint.Align.CENTER, 0.3f, 0.24f, Neon.FONT_BODY)
+                Neon.panel(c, w * 0.14f, h * 0.285f, w * 0.86f, h * 0.345f, 10f, fade(Palette.LIME, 0.07f), fade(Palette.LIME, 0.7f), 1.6f, 0.6f)
+                Neon.label(c, if (typed.isEmpty()) "___.___.___.___" else typed, cx, h * 0.328f, 24f, Palette.WHITE, Paint.Align.CENTER, 0.6f, 0.06f, Neon.FONT_NUM)
+                for (i in keypad.indices) {
+                    val b = keypad[i]
+                    b.label = when (i) {
+                        9 -> "."
+                        10 -> "0"
+                        11 -> "DEL"
+                        else -> (i + 1).toString()
+                    }
+                    b.color = if (i == 11) Palette.RED else Palette.SKY
+                    drawButton(c, b, time)
+                }
+                drawButton(c, connectBtn, time, typed.isNotEmpty())
+                Neon.label(c, statusLine, cx, h * 0.775f, 14f,
+                    if (statusLine.startsWith("C")) Palette.LIME else Palette.RED,
+                    Paint.Align.CENTER, 0.5f, 0.16f)
+            }
+        }
+        drawButton(c, back, time)
+    }
+
+    /** Overlay while the partner is choosing their augment. */
+    fun drawPartnerPicking(c: Canvas, time: Float) {
+        Neon.fillRect(c, 0f, 0f, w, h, 0xE603010A.toInt())
+        val cx = w * 0.5f
+        val pulse = 0.55f + 0.45f * sin(time * 4f)
+        Neon.label(c, "PARTNER IS CHOOSING", cx, h * 0.45f, 26f, fade(Palette.ROSE, pulse), Paint.Align.CENTER, 1f, 0.24f)
+        Neon.label(c, "YOUR UPGRADE IS ALREADY INSTALLED", cx, h * 0.45f + 30f, 13f, Palette.DIM, Paint.Align.CENTER, 0.3f, 0.18f, Neon.FONT_BODY)
+        for (i in 0 until 3) {
+            val a = time * 2.4f + i * 0.6f
+            Neon.orb(c, cx + (i - 1) * 26f, h * 0.53f, 4.5f + 2.5f * sin(a), fade(Palette.ROSE, 0.5f + 0.5f * sin(a)), 1f)
+        }
     }
 
     fun drawShop(c: Canvas, time: Float) {

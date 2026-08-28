@@ -69,6 +69,9 @@ class Bolt {
  */
 class Arsenal(private val fx: Fx) {
 
+    /** The pilot this arsenal belongs to; set by [PlayerSlot]. */
+    lateinit var slot: PlayerSlot
+
     private val beams = Array(8) { Beam() }
     private val novas = Array(6) { Nova() }
     private val bolts = Array(10) { Bolt() }
@@ -120,8 +123,8 @@ class Arsenal(private val fx: Fx) {
     // -------------------------------------------------------------- update
 
     fun update(dt: Float, world: World) {
-        val lo = world.loadout
-        val p = world.player
+        val lo = slot.loadout
+        val p = slot.player
         orbitAngle += dt * 2.1f
         if (orbitAngle > TAU) orbitAngle -= TAU
 
@@ -152,12 +155,12 @@ class Arsenal(private val fx: Fx) {
     // -------------------------------------------------------------- VORTEX
 
     private fun tickVortex(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.VORTEX]
         val br = lo.branch[Aug.VORTEX]
         vortexT -= dt
         if (vortexT > 0f) return
-        val p = world.player
+        val p = slot.player
         val v = vortices.firstOrNull { !it.active } ?: return
         v.active = true
         v.x = clamp(p.x + rnd(-60f, 60f), 60f, world.w - 60f)
@@ -223,15 +226,15 @@ class Arsenal(private val fx: Fx) {
     // ------------------------------------------------------------ SENTINEL
 
     private fun tickSentinel(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.SENTINEL]
         val br = lo.branch[Aug.SENTINEL]
         sentinelT -= dt
         if (sentinelT > 0f) return
-        val p = world.player
+        val p = slot.player
         if (!p.alive) return
         val count = if (br == Aug.A) 2 else 1
-        val bonus = lo.damageBonus() + world.ship.damageBonus
+        val bonus = lo.damageBonus() + slot.ship.damageBonus
         for (i in 0 until count) {
             val t = turrets.firstOrNull { !it.active } ?: return
             t.active = true
@@ -282,18 +285,18 @@ class Arsenal(private val fx: Fx) {
     }
 
     /** Ability cooldowns, shortened by the COOLANT module. */
-    private fun cd(world: World, seconds: Float): Float = seconds * world.loadout.cooldownMul()
+    private fun cd(world: World, seconds: Float): Float = seconds * slot.loadout.cooldownMul()
 
     // ---------------------------------------------------------------- FLAK
 
     private fun tickFlak(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.FLAK]
         val br = lo.branch[Aug.FLAK]
         flakT -= dt
         if (flakT > 0f) return
-        val p = world.player
-        val bonus = lo.damageBonus() + world.ship.damageBonus
+        val p = slot.player
+        val bonus = lo.damageBonus() + slot.ship.damageBonus
         when (br) {
             Aug.A -> { // CLUSTER
                 flakT = cd(world, clamp(2.0f - 0.1f * (l - 3), 1.5f, 2.0f))
@@ -316,10 +319,10 @@ class Arsenal(private val fx: Fx) {
     // -------------------------------------------------------------- TETHER
 
     private fun tickTether(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.TETHER]
         val br = lo.branch[Aug.TETHER]
-        val p = world.player
+        val p = slot.player
         if (!p.alive) { tetherIdx = -1; return }
         val range = 230f + 22f * l
 
@@ -373,13 +376,13 @@ class Arsenal(private val fx: Fx) {
     }
 
     private fun tickWing(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.WING]
         val br = lo.branch[Aug.WING]
-        val p = world.player
+        val p = slot.player
         if (!p.alive) return
         val n = wingCount(lo)
-        val bonus = lo.damageBonus() + world.ship.damageBonus
+        val bonus = lo.damageBonus() + slot.ship.damageBonus
 
         if (br == Aug.A) {
             for (i in 0 until n) {
@@ -409,7 +412,7 @@ class Arsenal(private val fx: Fx) {
             b.x += b.drift * dt
             for (e in world.enemies) {
                 if (!e.active) continue
-                if (abs(e.x - b.x) <= b.halfW + e.r && e.y < world.player.y) {
+                if (abs(e.x - b.x) <= b.halfW + e.r && e.y < slot.player.y) {
                     world.hit(e, b.dps * dt, e.x, e.y + e.r * 0.4f, chance(0.25f))
                 }
             }
@@ -439,12 +442,12 @@ class Arsenal(private val fx: Fx) {
     // --------------------------------------------------------------- LANCE
 
     private fun tickLance(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.LANCE]
         val b = lo.branch[Aug.LANCE]
         lanceT -= dt
         if (lanceT > 0f) return
-        val p = world.player
+        val p = slot.player
         when (b) {
             Aug.A -> { // PRISM: three fanning beams
                 lanceT = cd(world, clamp(2.3f - 0.15f * (l - 3), 1.6f, 2.3f))
@@ -475,12 +478,12 @@ class Arsenal(private val fx: Fx) {
     // --------------------------------------------------------------- SWARM
 
     private fun tickSwarm(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.SWARM]
         val b = lo.branch[Aug.SWARM]
         swarmT -= dt
         if (swarmT > 0f) return
-        val p = world.player
+        val p = slot.player
         val bonus = lo.damageBonus()
         when (b) {
             Aug.A -> { // HORNETS
@@ -536,8 +539,8 @@ class Arsenal(private val fx: Fx) {
     }
 
     private fun tickOrbit(dt: Float, world: World) {
-        val lo = world.loadout
-        val p = world.player
+        val lo = slot.loadout
+        val p = slot.player
         val count = nodeCount(lo)
         val orbit = nodeOrbit(lo)
         val nodeR = nodeRadius(lo)
@@ -586,12 +589,12 @@ class Arsenal(private val fx: Fx) {
     // ----------------------------------------------------------------- ARC
 
     private fun tickArc(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.ARC]
         val b = lo.branch[Aug.ARC]
         arcT -= dt
         if (arcT > 0f) return
-        val p = world.player
+        val p = slot.player
 
         if (b == Aug.B) { // RAILGUN: a line straight up the lane
             arcT = cd(world, clamp(2.1f - 0.15f * (l - 3), 1.5f, 2.1f))
@@ -671,10 +674,10 @@ class Arsenal(private val fx: Fx) {
     // --------------------------------------------------------------- PULSE
 
     private fun tickPulse(dt: Float, world: World) {
-        val lo = world.loadout
+        val lo = slot.loadout
         val l = lo.lvl[Aug.PULSE]
         val b = lo.branch[Aug.PULSE]
-        val p = world.player
+        val p = slot.player
 
         if (b == Aug.B) { // REPULSOR: a constant field, not a timed blast
             val r = 104f + 9f * l
@@ -724,8 +727,8 @@ class Arsenal(private val fx: Fx) {
     // ----------------------------------------------------------------- draw
 
     fun draw(c: Canvas, world: World) {
-        val lo = world.loadout
-        val p = world.player
+        val lo = slot.loadout
+        val p = slot.player
 
         for (b in beams) {
             if (!b.active) continue

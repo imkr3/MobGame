@@ -22,6 +22,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     companion object {
         const val ENEMY_CAP = 56
+        const val BULLET_CAP = 620
         const val GRAZE_R = 26f
         const val OD_DURATION = 3.2f
         const val COMBO_WINDOW = 3.2f
@@ -33,16 +34,31 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     var h = 1000f
         private set
 
-    val player = Player()
-    val loadout = Loadout()
+    /** Slot 0 is always the local pilot; slot 1 is the co-op partner. */
+    val slots = arrayOf(PlayerSlot(0, fx), PlayerSlot(1, fx))
+
+    val player: Player get() = slots[0].player
+    val loadout: Loadout get() = slots[0].loadout
+    val arsenal: Arsenal get() = slots[0].arsenal
+
     /** The hull chosen in the hangar; set before [reset]. */
-    var ship: Ship = ShipDex.byId(ShipDex.STARTER)
+    var ship: Ship
+        get() = slots[0].ship
+        set(v) { slots[0].ship = v }
+
     /** Permanent shop bonuses; set before [reset]. */
-    var meta: Meta = Meta()
+    var meta: Meta
+        get() = slots[0].meta
+        set(v) { slots[0].meta = v }
+
+    /** True when a second pilot is in the run. */
+    val coop: Boolean get() = slots[1].joined
+
+    fun joinedSlots(): List<PlayerSlot> = slots.filter { it.joined }
+
     /** Optional sound sink; null in headless tests. */
     var sound: SoundBus? = null
-    val arsenal = Arsenal(fx)
-    internal val bullets = Array(620) { Bullet() }
+    internal val bullets = Array(BULLET_CAP) { Bullet() }
     private var bIdx = 0
     internal val enemies = Array(ENEMY_CAP) { Enemy() }
     private val pickups = Array(28) { PowerUp() }
@@ -99,17 +115,13 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     fun resize(width: Float, height: Float) {
         w = width; h = height
-        if (player.x == 0f && player.y == 0f) centerPlayer()
-        player.x = clamp(player.x, 20f, w - 20f)
-        player.y = clamp(player.y, h * 0.25f, h - 60f)
-        player.tx = player.x; player.ty = player.y
-    }
-
-    private fun centerPlayer() {
-        player.x = w * 0.5f
-        player.y = h - h * 0.18f
-        player.tx = player.x
-        player.ty = player.y
+        for (s in slots) {
+            val p = s.player
+            if (p.x == 0f && p.y == 0f) s.home(w, h)
+            p.x = clamp(p.x, 20f, w - 20f)
+            p.y = clamp(p.y, h * 0.25f, h - 60f)
+            p.tx = p.x; p.ty = p.y
+        }
     }
 
     fun reset() {
@@ -120,8 +132,6 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         score = 0; combo = 0; maxCombo = 0; comboT = 0f
         wave = 0; kills = 0; killsSinceWeapon = 4; gameOver = false
         levelsCleared = 0
-        loadout.reset()
-        arsenal.reset()
         pendingAugment = false
         boss = null; bossHpRatio = 0f
         awaitingNextWave = true
@@ -129,29 +139,44 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         augmentDelay = 0f
         time = 0f
         banner = ""; bannerSub = ""; bannerT = 0f
-        player.shipId = ship.id
-        player.lives = ship.lives + meta.extraLives
-        player.hitR = ship.hitR
-        player.weapon = meta.startWeapon
-        player.shield = ship.startShield + meta.startShield
-        player.overdrive = meta.startOverdrive
-        loadout.bonusSlots = meta.extraSlots
-        if (ship.signature >= 0) loadout.lvl[ship.signature] = ship.signatureLevel
-        player.invuln = 2f
-        player.odTime = 0f
-        player.alive = true
-        player.respawnT = 0f
-        player.bank = 0f
-        player.fireT = 0f
-        centerPlayer()
+        slots[0].joined = true
+        for (s in slots) if (s.joined) s.resetFor(w, h)
+        spreadStartPositions()
         fx.reset()
+    }
+
+    /** Give the two pilots a little room at the start of a co-op run. */
+    private fun spreadStartPositions() {
+        if (!coop) return
+        for (s in slots) {
+            if (!s.joined) continue
+            val off = if (s.index == 0) -60f else 60f
+            s.player.x = clamp(w * 0.5f + off, 20f, w - 20f)
+            s.player.tx = s.player.x
+        }
+    }
+
+    /** Adds a partner to the run. Call before [reset]. */
+    fun joinPartner(partnerShip: Ship, partnerMeta: Meta, partnerName: String) {
+        slots[1].joined = true
+        slots[1].ship = partnerShip
+        slots[1].meta = partnerMeta
+        slots[1].name = partnerName
+    }
+
+    fun dropPartner() {
+        slots[1].joined = false
+        slots[1].awaitingAugment = false
     }
 
     // ---------------------------------------------------------------- input
 
-    fun moveBy(dx: Float, dy: Float) {
-        player.tx = clamp(player.tx + dx, 18f, w - 18f)
-        player.ty = clamp(player.ty + dy, h * 0.14f, h - 34f)
+    fun moveBy(dx: Float, dy: Float) = moveBy(0, dx, dy)
+
+    fun moveBy(slotIndex: Int, dx: Float, dy: Float) {
+        val p = slots[slotIndex].player
+        p.tx = clamp(p.tx + dx, 18f, w - 18f)
+        p.ty = clamp(p.ty + dy, h * 0.14f, h - 34f)
     }
 
     internal fun haptic(): Haptics = haptics
@@ -161,36 +186,64 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         bannerT = 0f
     }
 
-    fun canOverdrive(): Boolean = player.overdrive >= 1f && player.odTime <= 0f && player.alive
+    fun canOverdrive(): Boolean = canOverdrive(0)
 
-    fun triggerOverdrive(): Boolean {
-        if (!canOverdrive()) return false
-        player.odTime = OD_DURATION
-        player.overdrive = 0f
+    fun canOverdrive(slotIndex: Int): Boolean {
+        val s = slots[slotIndex]
+        return s.joined && s.player.overdrive >= 1f && s.player.odTime <= 0f && s.player.alive
+    }
+
+    fun triggerOverdrive(): Boolean = triggerOverdrive(0)
+
+    fun triggerOverdrive(slotIndex: Int): Boolean {
+        if (!canOverdrive(slotIndex)) return false
+        val p = slots[slotIndex].player
+        p.odTime = OD_DURATION
+        p.overdrive = 0f
         val gained = clearHostileBullets(true)
-        fx.shockwave(player.x, player.y, w * 1.3f, Palette.AMBER, 0.6f, 5f)
-        fx.shockwave(player.x, player.y, w * 0.8f, Palette.WHITE, 0.4f, 3f)
+        fx.shockwave(p.x, p.y, w * 1.3f, Palette.AMBER, 0.6f, 5f)
+        fx.shockwave(p.x, p.y, w * 0.8f, Palette.WHITE, 0.4f, 3f)
         fx.flash(Palette.AMBER, 0.55f)
         fx.shake(0.5f)
         fx.freeze(0.09f)
-        fx.burst(player.x, player.y, 46, Palette.AMBER, 460f, 3.4f, 0.7f, true)
+        fx.burst(p.x, p.y, 46, Palette.AMBER, 460f, 3.4f, 0.7f, true)
         sound?.sfx(Sfx.OVERDRIVE)
-        if (gained > 0) fx.popText(player.x, player.y - 70f, "+$gained", Palette.AMBER, 24f, 1.1f)
+        if (gained > 0) fx.popText(p.x, p.y - 70f, "+$gained", Palette.AMBER, 24f, 1.1f)
         haptics.heavy()
         return true
     }
 
-    /** Offers for the between-wave choice. */
-    fun rollAugments(count: Int): List<AugCard> = loadout.rollOffers(count)
+    /** Which pilot owes the current pick. */
+    var augmentSlot = 0
+        private set
+
+    /** Offers for the between-wave choice, for whoever is picking. */
+    fun rollAugments(count: Int): List<AugCard> = slots[augmentSlot].loadout.rollOffers(count)
+
+    private fun openDraft() {
+        for (s in slots) s.awaitingAugment = s.joined
+        augmentSlot = slots.indexOfFirst { it.awaitingAugment }.coerceAtLeast(0)
+        pendingAugment = true
+    }
 
     fun applyAugment(c: AugCard) {
+        val s = slots[augmentSlot]
+        val player = s.player
+        val loadout = s.loadout
         val label = loadout.apply(c)
         when (c.id) {
             Aug.REPAIR -> player.lives = (player.lives + 1).coerceAtMost(5)
             Aug.ARMOR -> player.shield = (player.shield + 1).coerceAtMost(loadout.maxShield())
             Aug.HARDPOINT -> player.weapon = (player.weapon + 1).coerceAtMost(loadout.maxWeapon())
         }
-        pendingAugment = false
+        s.awaitingAugment = false
+        val next = slots.indexOfFirst { it.awaitingAugment }
+        if (next >= 0) {
+            augmentSlot = next
+        } else {
+            pendingAugment = false
+            augmentSlot = 0
+        }
         banner = if (c.branchPick != 0) "EVOLVED" else "AUGMENT ONLINE"
         bannerSub = label
         bannerT = 1.8f
@@ -681,8 +734,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         if (bannerT > 0f) bannerT -= dt
 
         updateWaveDirector(dt)
-        updatePlayer(dt)
-        arsenal.update(dt, this)
+        for (s in slots) if (s.joined) updatePlayer(s, dt)
+        for (s in slots) if (s.joined) s.arsenal.update(dt, this)
         updateBullets(dt)
         updateEnemies(dt)
         updatePickups(dt)
@@ -699,7 +752,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             // let the WAVE CLEAR banner land before the cards take over
             if (augmentDelay > 0f) {
                 augmentDelay -= dt
-                if (augmentDelay <= 0f) pendingAugment = true
+                if (augmentDelay <= 0f) openDraft()
                 return
             }
             if (pendingAugment) return
@@ -728,20 +781,24 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
     }
 
-    private fun updatePlayer(dt: Float) {
+    private fun updatePlayer(s: PlayerSlot, dt: Float) {
+        val player = s.player
+        val loadout = s.loadout
+        val ship = s.ship
         if (!player.alive) {
+            if (player.lives <= 0) return          // out for good; the partner plays on
             player.respawnT -= dt
             if (player.respawnT <= 0f) {
                 player.alive = true
                 player.invuln = 1.5f + loadout.mercyBonus()
-                centerPlayer()
+                s.home(w, h)
                 fx.shockwave(player.x, player.y, 90f, Palette.CYAN, 0.5f, 2.5f)
             }
             return
         }
 
         val px = player.x
-        val handling = clamp(loadout.handling() * ship.handlingMul, 0.3f, 0.86f)
+        val handling = handlingOf(s)
         player.x = approach(player.x, player.tx, handling, dt)
         player.y = approach(player.y, player.ty, handling, dt)
         val vx = (player.x - px) / dt.coerceAtLeast(0.0001f)
@@ -766,7 +823,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
         player.fireT -= dt
         if (player.fireT <= 0f) {
-            playerFire()
+            playerFire(s)
             var base = when (player.weapon) {
                 1 -> 0.155f; 2 -> 0.145f; 3 -> 0.135f; 4 -> 0.125f; else -> 0.115f
             }
@@ -776,7 +833,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
     }
 
-    private fun playerShot(offX: Float, offY: Float, angleDeg: Float, r: Float, dmg: Int): Bullet {
+    private fun playerShot(s: PlayerSlot, offX: Float, offY: Float, angleDeg: Float, r: Float, dmg: Int): Bullet {
+        val player = s.player
+        val loadout = s.loadout
         val od = player.odTime > 0f
         val a = (-90f + angleDeg) * DEG
         val speed = 1000f * loadout.bulletSpeedMul()
@@ -788,33 +847,37 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         return b
     }
 
-    private fun playerFire() {
+    private fun playerFire(s: PlayerSlot) {
+        val player = s.player
+        val loadout = s.loadout
+        val ship = s.ship
         val od = player.odTime > 0f
         val d = (if (od) 4 else 2) + loadout.damageBonus() + ship.damageBonus
         when (player.weapon) {
-            1 -> playerShot(0f, -14f, 0f, 4.4f, d)
-            2 -> { playerShot(-7f, -12f, 0f, 4f, d); playerShot(7f, -12f, 0f, 4f, d) }
-            3 -> { playerShot(-9f, -10f, 0f, 3.8f, d); playerShot(9f, -10f, 0f, 3.8f, d); playerShot(0f, -16f, 0f, 4.6f, d) }
+            1 -> playerShot(s, 0f, -14f, 0f, 4.4f, d)
+            2 -> { playerShot(s, -7f, -12f, 0f, 4f, d); playerShot(s, 7f, -12f, 0f, 4f, d) }
+            3 -> { playerShot(s, -9f, -10f, 0f, 3.8f, d); playerShot(s, 9f, -10f, 0f, 3.8f, d); playerShot(s, 0f, -16f, 0f, 4.6f, d) }
             4 -> {
-                playerShot(-10f, -10f, -7f, 3.8f, d); playerShot(10f, -10f, 7f, 3.8f, d)
-                playerShot(0f, -16f, 0f, 4.6f, d)
+                playerShot(s, -10f, -10f, -7f, 3.8f, d); playerShot(s, 10f, -10f, 7f, 3.8f, d)
+                playerShot(s, 0f, -16f, 0f, 4.6f, d)
             }
             else -> {
-                playerShot(-11f, -9f, -9f, 3.8f, d); playerShot(11f, -9f, 9f, 3.8f, d)
-                playerShot(-5f, -14f, -3f, 4.2f, d); playerShot(5f, -14f, 3f, 4.2f, d)
-                playerShot(0f, -17f, 0f, 4.8f, d)
+                playerShot(s, -11f, -9f, -9f, 3.8f, d); playerShot(s, 11f, -9f, 9f, 3.8f, d)
+                playerShot(s, -5f, -14f, -3f, 4.2f, d); playerShot(s, 5f, -14f, 3f, 4.2f, d)
+                playerShot(s, 0f, -17f, 0f, 4.8f, d)
             }
         }
         if (od) {
-            playerShot(-17f, -4f, -34f, 3.6f, d)
-            playerShot(17f, -4f, 34f, 3.6f, d)
+            playerShot(s, -17f, -4f, -34f, 3.6f, d)
+            playerShot(s, 17f, -4f, 34f, 3.6f, d)
         }
-        spreadFire(d)
+        spreadFire(s, d)
         sound?.sfx(Sfx.SHOOT)
         fx.cone(player.x, player.y - 14f, 2, -TAU * 0.25f, 0.5f, if (od) Palette.AMBER else Palette.CYAN, 190f, 1.9f, 0.14f)
     }
 
-    private fun spreadFire(d: Int) {
+    private fun spreadFire(s: PlayerSlot, d: Int) {
+        val loadout = s.loadout
         val lvl = loadout.lvl[Aug.SPREAD]
         if (lvl <= 0) return
         when (loadout.branch[Aug.SPREAD]) {
@@ -823,14 +886,14 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 val n = 8 + extra
                 for (i in 0 until n) {
                     val ang = -66f + i * (132f / (n - 1))
-                    playerShot(0f, -8f, ang, 3.3f, (d * 0.8f).toInt())
+                    playerShot(s, 0f, -8f, ang, 3.3f, (d * 0.8f).toInt())
                 }
             }
             Aug.B -> { // PHALANX: heavy piercing bolts
                 val extra = lvl - 3
                 for (i in 0 until 4) {
                     val off = (i - 1.5f) * 14f
-                    val b = playerShot(off, -10f, 0f, 5.6f, (d * 1.6f).toInt() + extra)
+                    val b = playerShot(s, off, -10f, 0f, 5.6f, (d * 1.6f).toInt() + extra)
                     b.pierce = 2 + extra
                 }
             }
@@ -840,7 +903,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                     2 -> floatArrayOf(-22f, 22f, -40f, 40f)
                     else -> floatArrayOf(-18f, 18f, -34f, 34f, -52f, 52f)
                 }
-                for (a in angles) playerShot(0f, -8f, a, 3.6f, d)
+                for (a in angles) playerShot(s, 0f, -8f, a, 3.6f, d)
             }
         }
     }
@@ -907,6 +970,23 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     }
 
     /** Spawn a support enemy mid-wave (mines, broods, summoned wings). */
+    /** Movement responsiveness for a pilot - shared with the client so its
+     *  prediction uses the same number the host does. */
+    internal fun handlingOf(s: PlayerSlot): Float =
+        clamp(s.loadout.handling() * s.ship.handlingMul, 0.3f, 0.86f)
+
+    internal fun pickupSnapshotCount(): Int = pickups.count { it.active }
+
+    internal fun writePickups(o: java.io.DataOutputStream) {
+        for (u in pickups) {
+            if (!u.active) continue
+            o.writeShort(Proto.packPos(u.x).toInt())
+            o.writeShort(Proto.packPos(u.y).toInt())
+            o.writeByte(u.kind)
+            o.writeByte((u.t * 8f).toInt().coerceIn(0, 127))
+        }
+    }
+
     internal fun countActive(kind: Int): Int = enemies.count { it.active && it.kind == kind }
 
     internal fun spawnMinion(kind: Int, x: Float, y: Float): Enemy? =
@@ -933,12 +1013,13 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             u.t += dt
             u.life -= dt
             if (u.life <= 0f) { u.active = false; continue }
-            // magnetised towards the ship when close
-            if (player.alive) {
-                val dx = player.x - u.x
-                val dy = player.y - u.y
+            // magnetised towards whichever pilot is closest
+            for (s in slots) {
+                if (!s.joined || !s.player.alive) continue
+                val dx = s.player.x - u.x
+                val dy = s.player.y - u.y
                 val d = len(dx, dy)
-                val magnet = loadout.magnetRadius() * ship.magnetMul
+                val magnet = s.loadout.magnetRadius() * s.ship.magnetMul
                 if (d < magnet && d > 0.001f) {
                     val pull = (1f - d / magnet) * 620f
                     u.vx += dx / d * pull * dt
@@ -1021,71 +1102,85 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             }
         }
 
-        if (player.alive) {
-            val invulnerable = player.invuln > 0f || player.odTime > 0f
-            // hostile shots vs player (small hitbox, generous graze)
-            for (b in bullets) {
-                if (!b.active || !b.hostile) continue
-                val dx = b.x - player.x
-                val dy = b.y - player.y
-                val d2 = dx * dx + dy * dy
-                val hitR = player.hitR + b.r
-                if (d2 <= hitR * hitR) {
-                    b.active = false
-                    if (!invulnerable) { hurtPlayer(); return }
-                    fx.burst(b.x, b.y, 4, Palette.AMBER, 150f, 2f, 0.3f)
-                } else if (!b.grazed && d2 <= GRAZE_R * GRAZE_R) {
-                    b.grazed = true
-                    player.overdrive = clamp(player.overdrive + loadout.grazeCharge() * ship.grazeMul, 0f, 1f)
-                    score += (15 * scoreMultiplier()).toInt()
-                    fx.cone(b.x, b.y, 2, atan2(-dy, -dx), 0.8f, Palette.CYAN, 140f, 1.6f, 0.25f)
-                }
-            }
-            // pylon tethers
-            for (i in enemies.indices) {
-                val a = enemies[i]
-                if (!a.active || a.kind != EK.PYLON || a.link <= i) continue
-                val b = enemies[a.link]
-                if (!b.active || b.kind != EK.PYLON) continue
-                if (a.state != 2 || b.state != 2) continue
-                if (player.invuln <= 0f && player.odTime <= 0f &&
-                    distToSegment(player.x, player.y, a.x, a.y, b.x, b.y) < 9f + player.hitR
-                ) {
-                    hurtPlayer()
-                    return
-                }
-            }
-            // ramming
-            for (e in enemies) {
-                if (!e.active) continue
-                val dx = e.x - player.x
-                val dy = e.y - player.y
-                val rr = e.r * 0.8f + player.hitR
-                if (dx * dx + dy * dy <= rr * rr) {
-                    if (player.odTime > 0f) {
-                        hit(e, 6f, player.x, player.y)
-                    } else if (player.invuln <= 0f) {
-                        if (e.kind != EK.BOSS) hit(e, 999f, e.x, e.y)
-                        hurtPlayer()
-                        return
-                    }
-                }
-            }
-            // pickups
-            for (u in pickups) {
-                if (!u.active) continue
-                val dx = u.x - player.x
-                val dy = u.y - player.y
-                val rr = u.r + player.bodyR
-                if (dx * dx + dy * dy <= rr * rr) {
-                    u.active = false
-                    collect(u)
-                }
-            }
+        for (s in slots) {
+            if (!s.joined) continue
+            if (collidePlayer(s)) return
         }
     }
 
-    private fun collect(u: PowerUp) {
+    /** Returns true when the pilot was hit, so the caller stops this frame. */
+    private fun collidePlayer(s: PlayerSlot): Boolean {
+        val player = s.player
+        val loadout = s.loadout
+        val ship = s.ship
+        if (!player.alive) return false
+        val invulnerable = player.invuln > 0f || player.odTime > 0f
+
+        // hostile shots vs pilot (small hitbox, generous graze)
+        for (b in bullets) {
+            if (!b.active || !b.hostile) continue
+            val dx = b.x - player.x
+            val dy = b.y - player.y
+            val d2 = dx * dx + dy * dy
+            val hitR = player.hitR + b.r
+            if (d2 <= hitR * hitR) {
+                b.active = false
+                if (!invulnerable) { hurtPlayer(s); return true }
+                fx.burst(b.x, b.y, 4, Palette.AMBER, 150f, 2f, 0.3f)
+            } else if (!b.grazed && d2 <= GRAZE_R * GRAZE_R) {
+                b.grazed = true
+                player.overdrive = clamp(player.overdrive + loadout.grazeCharge() * ship.grazeMul, 0f, 1f)
+                score += (15 * scoreMultiplier()).toInt()
+                fx.cone(b.x, b.y, 2, atan2(-dy, -dx), 0.8f, Palette.CYAN, 140f, 1.6f, 0.25f)
+            }
+        }
+        // pylon tethers
+        for (i in enemies.indices) {
+            val a = enemies[i]
+            if (!a.active || a.kind != EK.PYLON || a.link <= i) continue
+            val b = enemies[a.link]
+            if (!b.active || b.kind != EK.PYLON) continue
+            if (a.state != 2 || b.state != 2) continue
+            if (player.invuln <= 0f && player.odTime <= 0f &&
+                distToSegment(player.x, player.y, a.x, a.y, b.x, b.y) < 9f + player.hitR
+            ) {
+                hurtPlayer(s)
+                return true
+            }
+        }
+        // ramming
+        for (e in enemies) {
+            if (!e.active) continue
+            val dx = e.x - player.x
+            val dy = e.y - player.y
+            val rr = e.r * 0.8f + player.hitR
+            if (dx * dx + dy * dy <= rr * rr) {
+                if (player.odTime > 0f) {
+                    hit(e, 6f, player.x, player.y)
+                } else if (player.invuln <= 0f) {
+                    if (e.kind != EK.BOSS) hit(e, 999f, e.x, e.y)
+                    hurtPlayer(s)
+                    return true
+                }
+            }
+        }
+        // pickups
+        for (u in pickups) {
+            if (!u.active) continue
+            val dx = u.x - player.x
+            val dy = u.y - player.y
+            val rr = u.r + player.bodyR
+            if (dx * dx + dy * dy <= rr * rr) {
+                u.active = false
+                collect(s, u)
+            }
+        }
+        return false
+    }
+
+    private fun collect(s: PlayerSlot, u: PowerUp) {
+        val player = s.player
+        val loadout = s.loadout
         when (u.kind) {
             PK.WEAPON -> {
                 if (player.weapon < loadout.maxWeapon()) {
@@ -1229,7 +1324,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         return payout
     }
 
-    private fun hurtPlayer() {
+    private fun hurtPlayer(s: PlayerSlot) {
+        val player = s.player
+        val loadout = s.loadout
         if (player.shield > 0) {
             player.shield--
             player.invuln = 1.4f + loadout.mercyBonus()
@@ -1260,8 +1357,15 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         clearHostileBullets(false)
 
         if (player.lives <= 0) {
-            gameOver = true
             player.respawnT = 999f
+            if (slots.none { it.joined && it.player.lives > 0 }) {
+                gameOver = true
+            } else {
+                fx.popText(player.x, player.y - 60f, "PILOT DOWN", Palette.RED, 20f, 1.4f)
+                banner = "PILOT DOWN"
+                bannerSub = "PARTNER STILL FLYING"
+                bannerT = 1.6f
+            }
         }
     }
 
@@ -1284,12 +1388,104 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             if (e.kind == EK.SHIELDER) Draw.shielderPlate(c, e)
         }
         for (b in bullets) if (b.active && !b.hostile) Draw.bullet(c, b)
-        arsenal.draw(c, this)
-        Draw.player(c, player, time)
+        for (s in slots) if (s.joined) s.arsenal.draw(c, this)
+        for (s in slots) {
+            if (!s.joined) continue
+            Draw.player(c, s.player, time)
+            if (coop && s.player.alive) Draw.pilotTag(c, s.player, s.index, time)
+        }
         for (b in bullets) if (b.active && b.hostile) Draw.bullet(c, b)
         fx.drawParticles(c)
         fx.drawTexts(c)
     }
 
-    fun bossPresent(): Boolean = boss != null && (boss?.active == true)
+    /** Set from snapshots when this world is a client-side mirror. */
+    private var netBoss = false
+
+    fun bossPresent(): Boolean = netBoss || (boss != null && boss?.active == true)
+
+    /**
+     * Client-side: replace this world's contents with the host's authoritative
+     * frame. The local pilot is always mapped to slot 0 so every HUD and draw
+     * path keeps working unchanged.
+     */
+    fun applySnapshot(s: Snapshot, mySlot: Int, localX: Float, localY: Float) {
+        score = s.score
+        combo = s.combo
+        wave = s.wave
+        levelsCleared = s.levelsCleared
+        bossHpRatio = s.bossHpRatio
+        netBoss = s.bossPresent
+        banner = s.banner
+        bannerSub = s.bannerSub
+        bannerT = s.bannerT
+        gameOver = s.gameOver
+
+        for (i in 0..1) {
+            val src = s.players[if (i == 0) mySlot else 1 - mySlot]
+            val dst = slots[i]
+            dst.joined = src.joined
+            val p = dst.player
+            p.alive = src.alive
+            // the local ship draws at its predicted position so it answers the thumb
+            p.x = if (i == 0) localX else src.x
+            p.y = if (i == 0) localY else src.y
+            p.lives = src.lives
+            p.shield = src.shield
+            p.weapon = src.weapon
+            p.overdrive = src.overdrive
+            p.odTime = src.odTime
+            p.shipId = src.shipId
+            p.bank = src.bank
+            p.invuln = src.invuln
+            dst.ship = ShipDex.byId(src.shipId)
+        }
+
+        for (i in bullets.indices) bullets[i].active = false
+        for (i in 0 until s.bulletCount) {
+            val b = bullets[i]
+            b.active = true
+            b.x = s.bulletX[i]; b.y = s.bulletY[i]; b.r = s.bulletR[i]
+            b.style = s.bulletStyle[i]; b.hostile = s.bulletHostile[i]; b.color = s.bulletColor[i]
+            b.vx = 0f; b.vy = if (b.hostile) 1f else -1f     // only used for lance orientation
+        }
+        for (i in enemies.indices) enemies[i].active = false
+        for (i in 0 until s.enemyCount) {
+            val e = enemies[i]
+            e.active = true
+            e.x = s.enemyX[i]; e.y = s.enemyY[i]; e.r = s.enemyR[i]
+            e.kind = s.enemyKind[i]; e.angle = s.enemyAngle[i]
+            e.hitFlash = s.enemyFlash[i]; e.elite = s.enemyElite[i]; e.color = s.enemyColor[i]
+            e.link = -1; e.telegraph = 0f
+        }
+        for (u in pickups) u.active = false
+        for (i in 0 until minOf(s.pickupCount, pickups.size)) {
+            val u = pickups[i]
+            u.active = true
+            u.x = s.pickupX[i]; u.y = s.pickupY[i]; u.kind = s.pickupKind[i]; u.t = s.pickupT[i]
+            u.r = if (u.kind == PK.GEM) 9f else 13f
+            u.life = 10f
+        }
+    }
+
+    /** Client-side: the host's closing numbers for the game-over panel. */
+    fun applyFinal(finalScore: Int, finalWave: Int, finalKills: Int, finalCombo: Int, finalLevels: Int) {
+        score = finalScore
+        wave = finalWave
+        kills = finalKills
+        maxCombo = finalCombo
+        levelsCleared = finalLevels
+        gameOver = true
+    }
+
+    /** Prepares this world as a client-side mirror rather than a simulation. */
+    fun prepareMirror(localShip: Ship, partnerShip: Ship) {
+        slots[0].joined = true
+        slots[0].ship = localShip
+        slots[1].joined = true
+        slots[1].ship = partnerShip
+        gameOver = false
+        netBoss = false
+        pendingAugment = false
+    }
 }
