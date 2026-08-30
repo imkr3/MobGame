@@ -11,7 +11,8 @@ private class Spawn(
     var kind: Int = EK.DRIFTER,
     var x: Float = 0f,
     var y: Float = -40f,
-    var hpMul: Float = 1f
+    var hpMul: Float = 1f,
+    var elite: Boolean = false
 )
 
 /**
@@ -26,6 +27,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
         /** Seconds a boss fight runs at full toughness before it starts giving. */
         const val BOSS_PATIENCE = 60f
+
+        /** How long the overload klaxon runs before settling to a low hum. */
+        const val ALARM_TIME = 3.6f
         const val GRAZE_R = 26f
         const val OD_DURATION = 3.2f
         const val COMBO_WINDOW = 3.2f
@@ -107,6 +111,20 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     /** What this run contributed, read by the contracts when it ends. */
     val tally = RunTally()
 
+    /**
+     * Killscreen tier: one for every 30-wave level survived. Everything that
+     * can be made faster is, permanently, for the rest of the run.
+     */
+    var overload = 0
+        private set
+
+    /** Seconds of alarm left on the overload transition. */
+    var overloadAlarm = 0f
+        private set
+
+    private var lastArch = -1
+    private val planBuf = ArrayList<GroupPlan>(8)
+
     /** Free respawns left, bought in the shop. */
     private var revives = 0
     private var killsSinceWeapon = 0
@@ -133,6 +151,14 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         internal set
 
     private fun scoreMultiplier(): Float = loadout.scoreMul() * ship.scoreMul * meta.scoreMul
+
+    // Killscreen scaling. Speed is what makes it feel like a wall, so the
+    // fire rate and projectile speed move hardest and health least.
+    val overloadSpeed: Float get() = clamp(1f + 0.12f * overload, 1f, 1.70f)
+    val overloadRate: Float get() = clamp(1f - 0.15f * overload, 0.40f, 1f)
+    // capped so a shot still crosses the screen slowly enough to be read
+    val overloadBullet: Float get() = clamp(1f + 0.17f * overload, 1f, 1.85f)
+    private val overloadHp: Float get() = 1f + 0.30f * overload
 
     /** GRAZE FIELD widens the window that charges overdrive. */
     private val grazeRadius: Float get() = GRAZE_R * meta.grazeMul
@@ -163,6 +189,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         score = 0; combo = 0; maxCombo = 0; comboT = 0f
         wave = 0; kills = 0; killsSinceWeapon = 4; gameOver = false
         levelsCleared = 0
+        overload = 0
+        overloadAlarm = 0f
+        lastArch = -1
         tally.reset()
         revives = meta.revives
         pendingAugment = false
@@ -256,6 +285,30 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     val draftCards: Int get() = meta.draftCards
 
     fun rollAugments(count: Int): List<AugCard> = slots[augmentSlot].loadout.rollOffers(count)
+
+    /**
+     * Nothing left to install and no room to add anything: pay the draft out in
+     * score rather than forcing a card in, which used to push the bay past its
+     * own cap and leave the HUD reading 9/8.
+     */
+    fun skipDraft() {
+        val s = slots[augmentSlot]
+        val bonus = (2500 * wave * scoreMultiplier()).toInt()
+        score += bonus
+        s.awaitingAugment = false
+        val next = slots.indexOfFirst { it.awaitingAugment }
+        if (next >= 0) {
+            augmentSlot = next
+        } else {
+            pendingAugment = false
+            augmentSlot = 0
+        }
+        banner = "BAY FULL"
+        bannerSub = "+$bonus"
+        bannerT = 1.8f
+        fx.popText(s.player.x, s.player.y - 46f, "+$bonus", Palette.AMBER, 20f)
+        sound?.sfx(Sfx.POWERUP)
+    }
 
     private fun openDraft() {
         for (s in slots) s.awaitingAugment = s.joined
@@ -470,9 +523,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     private fun spawnEnemy(kind: Int, x: Float, y: Float, hpMul: Float): Enemy? {
         val e = obtainEnemy() ?: return null
-        val speedMul = clamp(0.9f + (wave - 1) * 0.05f, 0.9f, 1.95f)
+        val speedMul = clamp(0.9f + (wave - 1) * 0.05f, 0.9f, 1.95f) * overloadSpeed
         // >1 means slower firing: the first waves deliberately shoot less
-        val rateMul = clamp(1.28f - (wave - 1) * 0.048f, 0.42f, 1.28f)
+        val rateMul = clamp(1.28f - (wave - 1) * 0.048f, 0.42f, 1.28f) * overloadRate
         e.active = true
         e.kind = kind
         e.x = x; e.y = y
@@ -626,22 +679,25 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
         // Elites appear once the run is deep enough: tougher, worth more.
         if (kind != EK.BOSS && kind != EK.MINE && wave >= 8 && chance(clamp(0.03f + wave * 0.012f, 0f, 0.45f))) {
-            e.elite = true
-            e.hp *= 1.6f + clamp(wave * 0.02f, 0f, 0.8f)
-            e.r *= 1.12f
-            e.score = (e.score * 2.2f).toInt()
-            e.dropBias *= 1.8f
-            e.fireEvery *= 0.8f
+            promoteElite(e)
         }
         e.maxHp = e.hp
         return e
     }
 
-    // -------------------------------------------------------- wave director
-
-    private fun addSpawn(t: Float, kind: Int, x: Float, hpMul: Float = 1f) {
-        script.add(Spawn(t, kind, x, -40f - rnd(0f, 30f), hpMul))
+    /** Turns one enemy into an elite, whether by chance or because a plan said so. */
+    private fun promoteElite(e: Enemy) {
+        if (e.kind == EK.BOSS || e.kind == EK.MINE || e.elite) return
+        e.elite = true
+        e.hp *= 1.6f + clamp(wave * 0.02f, 0f, 0.8f)
+        e.maxHp = e.hp
+        e.r *= 1.12f
+        e.score = (e.score * 2.2f).toInt()
+        e.dropBias *= 1.8f
+        e.fireEvery *= 0.8f
     }
+
+    // -------------------------------------------------------- wave director
 
     private fun buildWave(n: Int) {
         script.clear()
@@ -651,122 +707,32 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val tier = Levels.tier(n)
         // linear early, quadratic late: the opening stays readable while a
         // fully-augmented ship still meets something that can kill it
-        val hpMul = 1f + (n - 1) * 0.22f + (n - 1) * (n - 1) * 0.014f + tier * 0.9f
+        val hpMul = (1f + (n - 1) * 0.22f + (n - 1) * (n - 1) * 0.014f + tier * 0.9f) * overloadHp
 
         if (Levels.isBossWave(n)) {
             script.add(Spawn(1.9f, EK.BOSS, w * 0.5f, -110f, hpMul))
             return
         }
 
-        var t = 0.4f
         val waveInSector = (n - 1) % Levels.WAVES_PER_LEVEL
         // grows with the run overall, with a small breather at each sector start
-        val groups = 2 + waveInSector.coerceAtMost(3) + (n / 6).coerceAtMost(4) + tier
-        for (g in 0 until groups) {
-            // the first two waves of the run stick to the gentler half of the roster
-            val kind = if (n <= 3) sector.roster[g % 2] else sector.roster[(g + n) % sector.roster.size]
-            t += addGroup(kind, t, n, hpMul)
-        }
-    }
-
-    /** Lays down one formation of [kind] and returns how long it occupies the timeline. */
-    private fun addGroup(kind: Int, t: Float, n: Int, hpMul: Float): Float {
+        val budget = 2 + waveInSector.coerceAtMost(3) + (n / 6).coerceAtMost(4) + tier + overload
         val scale = 1 + n / 6
-        when (kind) {
-            EK.DRIFTER -> {
-                val count = (5 + scale).coerceAtMost(9)
-                for (i in 0 until count) {
-                    val f = (i + 0.5f) / count
-                    addSpawn(t + i * 0.12f, EK.DRIFTER, w * (0.12f + 0.76f * f), hpMul)
-                }
-                return 2.4f
+        lastArch = Waves.plan(n, sector.roster, budget, scale, overload, lastArch, planBuf)
+
+        var t = 0.4f
+        for (p in planBuf) {
+            for (i in 0 until p.count) {
+                script.add(
+                    Spawn(
+                        t + Waves.spawnDelay(p, i), p.kind, Waves.spawnX(p, i, w),
+                        -40f - rnd(0f, 30f), hpMul, p.elite
+                    )
+                )
             }
-            EK.WEAVER -> {
-                val count = (4 + scale / 2).coerceAtMost(7)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.26f, EK.WEAVER, w * 0.22f, hpMul)
-                    addSpawn(t + 0.13f + i * 0.26f, EK.WEAVER, w * 0.78f, hpMul)
-                }
-                return 2.7f
-            }
-            EK.CHARGER -> {
-                val count = (2 + scale).coerceAtMost(6)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.4f, EK.CHARGER, w * rnd(0.18f, 0.82f), hpMul)
-                }
-                return 2.8f
-            }
-            EK.TURRET -> {
-                val count = (1 + scale / 2).coerceAtMost(3)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.8f, EK.TURRET, w * rnd(0.22f, 0.78f), hpMul)
-                }
-                return 3.2f
-            }
-            EK.LANCER -> {
-                val count = (1 + scale / 3).coerceAtMost(3)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.7f, EK.LANCER, w * (0.25f + 0.5f * i / count.coerceAtLeast(1)), hpMul)
-                }
-                return 3.4f
-            }
-            EK.ORBITER -> {
-                val count = (2 + scale / 2).coerceAtMost(5)
-                val cx = w * rnd(0.3f, 0.7f)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.3f, EK.ORBITER, cx, hpMul)
-                }
-                return 2.9f
-            }
-            EK.SPLITTER -> {
-                val count = (2 + scale / 3).coerceAtMost(4)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.65f, EK.SPLITTER, w * rnd(0.2f, 0.8f), hpMul)
-                }
-                return 3.3f
-            }
-            EK.MINELAYER -> {
-                addSpawn(t, EK.MINELAYER, w * rnd(0.25f, 0.75f), hpMul)
-                if (n > 12) addSpawn(t + 1.4f, EK.MINELAYER, w * rnd(0.25f, 0.75f), hpMul)
-                return 3.6f
-            }
-            EK.SWARMER -> {
-                val count = (6 + scale * 2).coerceAtMost(14)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.1f, EK.SWARMER, w * rnd(0.12f, 0.88f), hpMul)
-                }
-                return 2.6f
-            }
-            EK.SHIELDER -> {
-                val count = (2 + scale / 3).coerceAtMost(4)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.5f, EK.SHIELDER, w * (0.2f + 0.6f * (i + 0.5f) / count), hpMul)
-                }
-                return 3.0f
-            }
-            EK.WISP -> {
-                val count = (2 + scale / 2).coerceAtMost(5)
-                for (i in 0 until count) {
-                    addSpawn(t + i * 0.4f, EK.WISP, w * rnd(0.15f, 0.85f), hpMul)
-                }
-                return 2.8f
-            }
-            EK.CARRIER -> {
-                addSpawn(t, EK.CARRIER, w * rnd(0.3f, 0.7f), hpMul)
-                if (n > 16) addSpawn(t + 1.6f, EK.CARRIER, w * rnd(0.3f, 0.7f), hpMul)
-                return 3.8f
-            }
-            EK.PYLON -> {
-                val pairs = if (n > 14) 2 else 1
-                for (p in 0 until pairs) {
-                    val y = t + p * 1.5f
-                    addSpawn(y, EK.PYLON, w * rnd(0.12f, 0.3f), hpMul)
-                    addSpawn(y + 0.05f, EK.PYLON, w * rnd(0.7f, 0.88f), hpMul)
-                }
-                return 3.4f
-            }
-            else -> return 1.5f
+            t += Waves.hold(p)
         }
+        script.sortBy { it.time }
     }
 
     private fun startWave(n: Int) {
@@ -777,17 +743,25 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         when {
             // A finished level is a milestone, not a stopping point - the run
             // rolls straight on into the next theme.
+            // A cleared sector is not a finish line, it is the point where the
+            // grid stops holding back. Everything that can be sped up is, for
+            // the rest of the run, and the alarm makes sure you know it.
             Levels.isLevelStart(n) && n > 1 -> {
                 val cleared = Levels.number(n) - 1
                 val bonus = (6000 * cleared * scoreMultiplier()).toInt()
                 score += bonus
                 levelsCleared = cleared
-                banner = "LEVEL $cleared CLEARED"
-                bannerSub = "${theme.name}   +$bonus"
-                bannerT = 3.2f
-                fx.flash(theme.accent, 0.4f)
-                fx.shockwave(player.x, player.y, w * 1.4f, theme.accent, 0.9f, 5f)
-                sound?.sfx(Sfx.LEVEL_UP)
+                overload = cleared
+                overloadAlarm = ALARM_TIME
+                banner = "SECTOR $cleared CLEARED"
+                bannerSub = "OVERLOAD x$overload   +$bonus"
+                bannerT = 4.2f
+                fx.flash(Palette.RED, 0.75f)
+                fx.shockwave(player.x, player.y, w * 1.8f, Palette.RED, 1.1f, 7f)
+                fx.shockwave(player.x, player.y, w * 1.2f, Palette.WHITE, 0.8f, 4f)
+                fx.shake(0.9f)
+                fx.freeze(0.16f)
+                sound?.sfx(Sfx.ALARM)
                 haptics.heavy()
             }
             Levels.isBossWave(n) -> {
@@ -824,6 +798,14 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
         time += dt
         if (bannerT > 0f) bannerT -= dt
+        if (overloadAlarm > 0f) {
+            overloadAlarm -= dt
+            // a couple of extra klaxon beats while the banner is up
+            if (chance(dt * 3.4f)) {
+                fx.flash(Palette.RED, 0.30f)
+                fx.shake(0.22f)
+            }
+        }
 
         updateWaveDirector(dt)
         for (s in slots) if (s.joined) updatePlayer(s, dt)
@@ -855,7 +837,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         waveT += dt
         while (scriptIdx < script.size && script[scriptIdx].time <= waveT) {
             val s = script[scriptIdx]
-            spawnEnemy(s.kind, s.x, s.y, s.hpMul)
+            val e = spawnEnemy(s.kind, s.x, s.y, s.hpMul)
+            if (s.elite && e != null && !e.elite) promoteElite(e)
             scriptIdx++
         }
         if (scriptIdx >= script.size && activeEnemies() == 0 && !gameOver) {
@@ -866,8 +849,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             bannerT = 1.9f
             sound?.sfx(Sfx.WAVE_CLEAR)
             awaitingNextWave = true
-            waveClearT = 1.4f
-            augmentDelay = 1.15f
+            // the breather between waves shrinks with every overload tier
+            waveClearT = clamp(1.4f - 0.25f * overload, 0.5f, 1.4f)
+            augmentDelay = clamp(1.15f - 0.2f * overload, 0.5f, 1.15f)
             boss = null
             bossHpRatio = 0f
         }
@@ -1079,7 +1063,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     }
 
     internal fun enemyBulletSpeed(): Float =
-        clamp(155f + wave * 11f + Levels.tier(wave) * 45f, 155f, 470f)
+        clamp(155f + wave * 11f + Levels.tier(wave) * 45f, 155f, 470f) * overloadBullet
 
     /** Fire an enemy bullet. Used by [EnemyAI] and [BossAI]. */
     internal fun hostileShot(x: Float, y: Float, angle: Float, speed: Float, r: Float, color: Int, style: Int): Bullet =
@@ -1609,6 +1593,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         combo = s.combo
         wave = s.wave
         levelsCleared = s.levelsCleared
+        // overload is a pure function of sectors cleared, so the mirror needs
+        // no extra field on the wire to show the same killscreen
+        overload = s.levelsCleared
         bossHpRatio = s.bossHpRatio
         netBoss = s.bossPresent
         banner = s.banner

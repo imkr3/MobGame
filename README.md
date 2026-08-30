@@ -6,7 +6,7 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
 <p align="center">
   <img src="docs/preview/menu.png" width="32%" alt="Battle tab" />
   <img src="docs/preview/gameplay.png" width="32%" alt="Gameplay" />
-  <img src="docs/preview/augments.png" width="32%" alt="Augment choice" />
+  <img src="docs/preview/wide-draft.png" width="32%" alt="A four-card draft" />
 </p>
 <p align="center">
   <img src="docs/preview/hangar.png" width="32%" alt="Hangar" />
@@ -15,13 +15,18 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
 </p>
 <p align="center">
   <img src="docs/preview/sectors.png" width="32%" alt="Sector select" />
-  <img src="docs/preview/abilities.png" width="32%" alt="Abilities in play" />
+  <img src="docs/preview/killscreen.png" width="32%" alt="The overload killscreen" />
   <img src="docs/preview/boss.png" width="32%" alt="Boss fight" />
+</p>
+<p align="center">
+  <img src="docs/preview/abilities.png" width="32%" alt="Abilities in play" />
+  <img src="docs/preview/augments.png" width="32%" alt="Augment choice" />
+  <img src="docs/preview/levels.png" width="32%" alt="The ten sector themes" />
 </p>
 <p align="center">
   <img src="docs/preview/records.png" width="32%" alt="Pilot tab" />
   <img src="docs/preview/new-systems.png" width="32%" alt="Time field and ricochet orbs" />
-  <img src="docs/preview/wide-draft.png" width="32%" alt="A four-card draft" />
+  <img src="docs/preview/summon.png" width="32%" alt="Ten-pull" />
 </p>
 
 <p align="center">
@@ -75,22 +80,35 @@ where big runs are made.
 
 ### Levels
 
-The run moves through ten themed levels of 35 waves each, then loops. Every
-level has its own palette, enemy roster, boss pool and music track — but
-**difficulty does not depend on the level**. It is driven purely by the wave
-number, so the run keeps escalating straight through every theme change.
-Clearing a level is a milestone and a score bonus, never a stopping point: the
-next one starts immediately, and harder.
+The run moves through ten themed levels of **30 waves** each, then loops. Every
+level has its own palette, enemy roster, boss pool and music track. Bosses land
+every fifth wave, so six per sector, and the sixth closes it out.
+
+### The overload
+
+Clearing a sector is not a stopping point — it is the point where the grid stops
+holding back. Wave 30 falls, a klaxon goes off, the screen frames itself in
+hazard red and **everything that can be sped up is, permanently**: enemies fire
+15% faster, their shots travel 17% faster, they move 12% faster, carry 30% more
+health, arrive in greater numbers and the breather between waves shortens. Every
+sector after that stacks another tier on top.
+
+It is a killscreen, not a wall. Against a scripted dodging pilot, crossing the
+first overload roughly halves how far a run gets per pool of hull segments —
+from about three waves to one or two — without ever making progress impossible.
+Bullet speed is capped so a shot always crosses the screen slowly enough to be
+read.
 
 **SECTORS**, on the main menu, is where levels open up. Every sector is listed
 from the first run so you can see what is ahead, but only the first is unlocked;
 the rest show what they are waiting for and open as you meet it. Pick an
 unlocked sector and the run *starts* there — its backdrop, its roster, its
 bosses and its music from wave 1 — and rolls on into the following sectors from
-that point. Because difficulty comes from the wave number alone, starting at
-THE HOLLOW is no harder than starting at NEON REACH; it just changes what you
-are looking at and shooting. The sector-select screen plays each sector's track
-while you browse it.
+that point. Difficulty comes from the wave number and the overload tier, never
+from which sector you picked, so starting at THE HOLLOW is no harder than
+starting at NEON REACH — it changes what you are looking at and shooting, not
+how hard it hits. The sector-select screen plays each sector's track while you
+browse it.
 
 | | Sector | Opens when |
 | --- | --- | --- |
@@ -131,6 +149,29 @@ longer wipes the bullets already in the air — the boss simply stops firing for
 the transition, so the screen clears on its own and what you dodged stays
 dodged. Past a minute in one fight the boss slowly starts giving, so a weak
 build is never stuck against an unkillable wall.
+
+### How a wave is built
+
+Waves are not a fixed rotation through the roster. Each one picks an
+**archetype**, and the archetype decides what it fields and how it arrives:
+
+| | The wave |
+| --- | --- |
+| **PATROL** | A bit of everything, the plain baseline |
+| **ASSAULT** | Ranks of light and mid-weight craft, straight down the screen |
+| **SWARM** | Far more bodies than usual, thin and fast |
+| **SIEGE** | Emplacements and heavies, with a light escort |
+| **AMBUSH** | Everything from the flanks, converging |
+| **GAUNTLET** | One kind, over and over, in a different shape each time |
+| **VANGUARD** | An elite spearhead, then the ordinary wave behind it |
+
+Shape is separate from substance: ten **formations** — line, wedge, column, twin
+lanes, pincer, arc, trickle, cluster, sweep, cross — apply to any enemy kind, so
+the same roster is dealt out a dozen ways. The randomness is fenced in: an
+archetype never repeats back to back, kinds always come from the sector's own
+roster and one kind cannot fill a whole wave on its own, and the total number of
+enemies is capped per wave so a shape that likes many groups cannot quietly
+field twice the enemies of one that likes few.
 
 Fifteen enemy types in all. Beyond the basics: **LANCER** holds a lane and
 telegraphs a column of fire, **ORBITER** circles a point firing along its
@@ -372,6 +413,7 @@ app/src/main/java/com/neonvoid/game/
   Augments.kt       Augment catalogue, evolution branches, offer generation
                     and every stat the loadout derives
   Levels.kt         The ten level themes: palettes, rosters, boss pools, music
+  Waves.kt          Wave archetypes, formations and the mob budget
   Progress.kt       Pilot rank, the run tally and the rolling contracts
   Shop.kt           Permanent core-bought upgrades and the bonuses they grant
   PlayerSlot.kt     One pilot: ship, loadout, ability systems
@@ -408,6 +450,8 @@ Most of the feel lives in a handful of constants:
 - `Aug.MAX_SLOTS`, `MAX_ABILITIES`, `BASE_MAX`, `EVOLVED_MAX` — how specialised
   a run gets and how hard the choices bite
 - `Levels.list` / `WAVES_PER_LEVEL` — level themes and chapter length
+- `Waves.weights` / `baseCount` / `mobCeiling` — wave archetypes and density
+- `World.overloadSpeed` / `overloadRate` / `overloadBullet` — the killscreen cliff
 - `Shop.items` — permanent upgrade costs, caps and rank gates
 - `Rank.toNext` / `Rank.xpFor` / `Missions.reward` — how fast the meta moves
 - `ShipDex.list` / `Rarity.weights` — hull stats and pull rates
@@ -438,6 +482,14 @@ validated headlessly here:
   crosses the wire, and pulling the partner's plug leaves the host flying solo
   rather than crashing. Local-ship prediction lands within 1.8 units of the host
   on average.
+- The wave director checked over 480 non-boss waves: every archetype and every
+  formation gets used, no archetype ever repeats back to back, and the mob count
+  per wave stays on the curve the old fixed rotation produced.
+- The killscreen measured rather than asserted: a dodging pilot is flown to a
+  target wave under invulnerability, the shield comes off, and progress is
+  counted inside a single difficulty band. Crossing the first overload takes a
+  run from roughly three waves per pool of hull segments to one or two, with
+  live enemy fire going from ~300 to ~510 units/second.
 - Every ability path forced and played: all 42 combinations (fourteen abilities,
   base plus both evolutions) run 150 simulated seconds each without a crash. The
   suite is also the balance yardstick — eight passes per path, compared on the

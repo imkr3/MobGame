@@ -21,6 +21,7 @@ object Sfx {
     const val LASER = 11
     const val SUMMON = 12
     const val LEVEL_UP = 13
+    const val ALARM = 14
 }
 
 private object Wave {
@@ -417,6 +418,13 @@ class Synth(private val rate: Int = 22050) {
                 note(Wave.SQUARE, 784f, 0.15f, 0.45f, false, 0.4f)
                 note(Wave.SQUARE, 1047f, 0.14f, 0.7f, false, 0.4f)
                 note(Wave.SAW, 196f, 0.18f, 0.8f, false, 0.5f, slidePerSec = 2.2f)
+            }
+            // Two-tone klaxon under a falling siren: the overload warning.
+            Sfx.ALARM -> {
+                note(Wave.SQUARE, 880f, 0.20f, 0.30f, false, 0.5f)
+                note(Wave.SQUARE, 660f, 0.20f, 0.55f, false, 0.5f, slidePerSec = 0.55f)
+                note(Wave.SAW, 220f, 0.22f, 1.5f, false, 0.5f, slidePerSec = 0.42f)
+                note(Wave.NOISE, 900f, 0.14f, 0.9f, false, 0.5f, slidePerSec = 0.5f)
             }
             Sfx.SUMMON -> {
                 note(Wave.SAW, 120f, 0.24f, 1.1f, false, 0.5f, slidePerSec = 5.5f)

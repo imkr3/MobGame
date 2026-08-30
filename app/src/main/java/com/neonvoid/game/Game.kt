@@ -157,7 +157,7 @@ class Game(context: Context) {
         if (partnerPicking) return
         offers = world.rollAugments(world.draftCards)
         if (offers.isEmpty()) {          // everything maxed: skip the screen
-            world.applyAugment(AugCard(Aug.SALVAGE, 0, "SALVAGE", "BONUS", "", Palette.AMBER))
+            world.skipDraft()
             return
         }
         // In co-op the host drafts first, then hands the choice to the partner.

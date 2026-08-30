@@ -63,8 +63,11 @@ object Levels {
     }
 
 
-    /** Waves in one level. Bosses land every fifth wave, so seven per level. */
-    const val WAVES_PER_LEVEL = 35
+    /**
+     * Waves in one level. Bosses land every fifth wave, so six per level, and
+     * the last of them closes the sector out.
+     */
+    const val WAVES_PER_LEVEL = 30
 
     val list = arrayOf(
         LevelTheme(

@@ -379,7 +379,11 @@ class Hud(private val prefs: Prefs) {
         val p = world.player
 
         // score
-        Neon.label(c, formatScore(world.score), 18f, top + 34f, 34f, Palette.WHITE, Paint.Align.LEFT, 0.7f, 0.06f, Neon.FONT_NUM)
+        // seven-digit scores used to run under the wave readout
+        val scoreText = formatScore(world.score)
+        var scoreSize = 34f
+        while (scoreSize > 16f && Neon.textWidth(scoreText, scoreSize, 0.06f, Neon.FONT_NUM) > w * 0.40f) scoreSize -= 1f
+        Neon.label(c, scoreText, 18f, top + 34f, scoreSize, Palette.WHITE, Paint.Align.LEFT, 0.7f, 0.06f, Neon.FONT_NUM)
         Neon.label(c, "BEST ${formatScore(maxOf(prefs.bestScore, world.score))}", 20f, top + 56f, 15f, Palette.DIM, Paint.Align.LEFT, 0.4f, 0.1f)
 
         // multiplier
@@ -399,9 +403,18 @@ class Hud(private val prefs: Prefs) {
         Neon.label(c, "WAVE ${world.wave}", w * 0.5f, top + 26f, 18f, Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.22f)
         if (!world.bossPresent()) {
             Neon.label(c, sector.name, w * 0.5f, top + 42f, 11f, fade(sector.accent, 0.8f), Paint.Align.CENTER, 0.4f, 0.3f)
-            val hint = if (world.loadout.slotsFull()) "CLEAR WAVE - UPGRADE EXISTING" else "CLEAR WAVE - NEW UPGRADE"
-            Neon.label(c, hint, w * 0.5f, top + 58f, 10f, fade(Palette.DIM, 0.9f), Paint.Align.CENTER, 0.25f, 0.24f, Neon.FONT_BODY)
+            if (world.overload > 0) {
+                val a = 0.6f + 0.4f * sin(time * 7f)
+                Neon.label(
+                    c, "OVERLOAD x${world.overload}", w * 0.5f, top + 58f, 11f,
+                    fade(Palette.RED, a), Paint.Align.CENTER, 0.7f, 0.3f
+                )
+            } else {
+                val hint = if (world.loadout.slotsFull()) "CLEAR WAVE - UPGRADE EXISTING" else "CLEAR WAVE - NEW UPGRADE"
+                Neon.label(c, hint, w * 0.5f, top + 58f, 10f, fade(Palette.DIM, 0.9f), Paint.Align.CENTER, 0.25f, 0.24f, Neon.FONT_BODY)
+            }
         }
+        drawOverload(c, world, time)
 
         // pause button
         val px = pause.cx
@@ -461,6 +474,56 @@ class Hud(private val prefs: Prefs) {
         drawBadges(c, world)
         drawOverdrive(c, world, time)
         if (showBanner) drawBanner(c, world, time)
+    }
+
+    /**
+     * The killscreen dressing: a hazard frame that never goes away once the
+     * grid has overloaded, and a klaxon panel for the few seconds after it
+     * happens. The frame is deliberately loud - the run genuinely is different
+     * from here on and the screen should say so.
+     */
+    private fun drawOverload(c: Canvas, world: World, time: Float) {
+        val tier = world.overload
+        if (tier <= 0) return
+        val alarm = clamp(world.overloadAlarm / 3.6f, 0f, 1f)
+        val pulse = 0.5f + 0.5f * sin(time * (5f + tier))
+        val edge = clamp(0.10f + 0.05f * tier, 0f, 0.30f) * (0.55f + 0.45f * pulse) + alarm * 0.5f
+        val band = 5f + 3f * tier.coerceAtMost(4) + alarm * 14f
+
+        // hazard frame
+        Neon.fillRect(c, 0f, 0f, w, band, fade(Palette.RED, edge))
+        Neon.fillRect(c, 0f, h - band, w, h, fade(Palette.RED, edge))
+        Neon.fillRect(c, 0f, 0f, band * 0.6f, h, fade(Palette.RED, edge * 0.8f))
+        Neon.fillRect(c, w - band * 0.6f, 0f, w, h, fade(Palette.RED, edge * 0.8f))
+
+        // diagonal hazard stripes along the top band while the klaxon runs
+        if (alarm > 0.01f) {
+            var x = -h
+            while (x < w + band * 2f) {
+                Neon.line(c, x, 0f, x + band * 2f, band, fade(Palette.AMBER, 0.55f * alarm), 3f, 0.4f)
+                x += band * 4f
+            }
+            val flash = 0.78f + 0.22f * sin(time * 16f)
+            // sits below the wave banner, and shrinks rather than running off
+            var size = 38f
+            while (size > 14f && Neon.textWidth("SYSTEM OVERLOAD", size, 0.20f) > w - 72f) size -= 1f
+            Neon.fillRect(c, 0f, h * 0.50f, w, h * 0.60f, fade(0xFF000000.toInt(), 0.55f * alarm))
+            Neon.hairline(c, 0f, h * 0.50f, w, h * 0.50f, fade(Palette.RED, 0.8f * alarm), 1.5f)
+            Neon.hairline(c, 0f, h * 0.60f, w, h * 0.60f, fade(Palette.RED, 0.8f * alarm), 1.5f)
+            // red on red disappears, so the core is white over a red glow
+            Neon.label(
+                c, "SYSTEM OVERLOAD", w * 0.5f, h * 0.555f, size,
+                fade(Palette.RED, flash * alarm), Paint.Align.CENTER, 1.6f, 0.20f
+            )
+            Neon.label(
+                c, "SYSTEM OVERLOAD", w * 0.5f, h * 0.555f, size,
+                fade(Palette.WHITE, flash * alarm), Paint.Align.CENTER, 0f, 0.20f
+            )
+            Neon.label(
+                c, "THE GRID STOPS HOLDING BACK", w * 0.5f, h * 0.585f, 13f,
+                fade(Palette.AMBER, alarm), Paint.Align.CENTER, 0.7f, 0.3f
+            )
+        }
     }
 
     private fun drawOverdrive(c: Canvas, world: World, time: Float) {
