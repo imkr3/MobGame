@@ -214,8 +214,13 @@ class Arsenal(private val fx: Fx) {
             b.dwell += dt
             when (br) {
                 // held long enough, the shot simply gives up and pays out
-                Aug.A -> if (b.dwell >= 2.0f) world.bankBullet(b)
+                Aug.A -> if (b.dwell >= 1.5f) world.bankBullet(b)
                 Aug.B -> if (b.dwell >= reflect) world.reflectBullet(b, payload)
+                else -> if (b.dwell >= 1.1f) {
+                    // the base field cannot kill, so it banks charge instead
+                    p.overdrive = clamp(p.overdrive + 0.11f + 0.03f * l, 0f, 1f)
+                    b.dwell = 0f
+                }
             }
         }
         if (br == Aug.A) {
@@ -351,14 +356,14 @@ class Arsenal(private val fx: Fx) {
             }
             Aug.B -> {                                   // IMPLOSION
                 vortexT = cd(world, clamp(5.0f - 0.2f * (l - 3), 3.8f, 5.0f))
-                v.r = 104f; v.dps = 12f
+                v.r = 124f; v.dps = 20f
                 v.maxLife = 2.2f; v.pull = 380f; v.implodes = true
-                v.damage = 46f + 12f * (l - 3)
+                v.damage = 125f + 32f * (l - 3)
             }
             else -> {
-                vortexT = cd(world, 7f - 0.4f * l)
-                v.r = 70f + 12f * l; v.dps = 9f + 4f * l
-                v.maxLife = 2.6f + 0.2f * l; v.pull = 200f + 30f * l
+                vortexT = cd(world, 6f - 0.4f * l)
+                v.r = 84f + 15f * l; v.dps = 18f + 8f * l
+                v.maxLife = 2.8f + 0.25f * l; v.pull = 220f + 30f * l
             }
         }
         v.life = v.maxLife
@@ -424,19 +429,19 @@ class Arsenal(private val fx: Fx) {
             }
             t.life = t.maxLife
             t.every = when (br) {
-                Aug.A -> 0.34f
-                Aug.B -> 1.1f
-                else -> clamp(0.6f - 0.05f * l, 0.35f, 0.6f)
+                Aug.A -> 0.28f
+                Aug.B -> 1.0f
+                else -> clamp(0.5f - 0.05f * l, 0.3f, 0.5f)
             }
             t.damage = when (br) {
-                Aug.A -> 3 + l + bonus
-                Aug.B -> 5 + l + bonus
-                else -> 3 + l + bonus
+                Aug.A -> 5 + l + bonus
+                Aug.B -> 7 + l + bonus
+                else -> 4 + 2 * l + bonus
             }
             t.fireT = 0.2f
             fx.shockwave(t.x, t.y, 40f, Palette.SKY, 0.35f, 2.5f)
         }
-        sentinelT = cd(world, if (br == Aug.A) 7.5f else 7f - 0.3f * l)
+        sentinelT = cd(world, if (br == Aug.A) 6.6f else 6.2f - 0.3f * l)
     }
 
     private fun updateTurrets(dt: Float, world: World) {
@@ -461,7 +466,8 @@ class Arsenal(private val fx: Fx) {
     }
 
     /** Ability cooldowns, shortened by the COOLANT module. */
-    private fun cd(world: World, seconds: Float): Float = seconds * slot.loadout.cooldownMul()
+    private fun cd(world: World, seconds: Float): Float =
+        seconds * slot.loadout.cooldownMul() * world.meta.cooldownMul
 
     // ---------------------------------------------------------------- FLAK
 
@@ -523,7 +529,7 @@ class Arsenal(private val fx: Fx) {
         val dps = when (br) {
             Aug.A -> 24f + 9f * l
             Aug.B -> 46f + 15f * l
-            else -> 20f + 10f * l
+            else -> 26f + 13f * l
         }
         world.hit(e, dps * dt, e.x, e.y, false)
         tetherTick -= dt
@@ -567,12 +573,12 @@ class Arsenal(private val fx: Fx) {
         }
         wingT -= dt
         if (wingT > 0f) return
-        wingT = cd(world, if (br == Aug.B) clamp(1.6f - 0.1f * (l - 3), 1.2f, 1.6f) else clamp(0.6f - 0.045f * l, 0.32f, 0.6f))
+        wingT = cd(world, if (br == Aug.B) clamp(1.85f - 0.1f * (l - 3), 1.45f, 1.85f) else clamp(0.7f - 0.045f * l, 0.42f, 0.7f))
         for (i in 0 until n) {
             val wx = p.x + wingOffset(lo, i)
             val wy = p.y + 6f
             if (br == Aug.B) {
-                val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 6 + l + bonus, Palette.WHITE)
+                val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 3 + l + bonus, Palette.WHITE)
                 m.turn = 4.5f
             } else {
                 world.allyBullet(wx, wy, 0f, -880f, 3.4f, 2 + l + bonus, Palette.WHITE, 1)
@@ -663,17 +669,17 @@ class Arsenal(private val fx: Fx) {
         val bonus = lo.damageBonus()
         when (b) {
             Aug.A -> { // HORNETS
-                swarmT = cd(world, clamp(1.25f - 0.08f * (l - 3), 0.9f, 1.25f))
-                for (i in 0 until 5) {
-                    val m = world.missile(p.x, p.y - 8f, rnd(-260f, 260f), rnd(-380f, -180f), 3.4f, 4 + bonus, Palette.LIME)
+                swarmT = cd(world, clamp(1.45f - 0.08f * (l - 3), 1.05f, 1.45f))
+                for (i in 0 until 3) {
+                    val m = world.missile(p.x, p.y - 8f, rnd(-260f, 260f), rnd(-380f, -180f), 3.4f, 3 + bonus, Palette.LIME)
                     m.turn = 7.5f
                 }
             }
             Aug.B -> { // WARHEAD
-                swarmT = cd(world, clamp(2.1f - 0.12f * (l - 3), 1.6f, 2.1f))
-                val m = world.missile(p.x, p.y - 12f, rnd(-40f, 40f), -230f, 7f, 16 + bonus * 2, Palette.AMBER)
+                swarmT = cd(world, clamp(2.6f - 0.12f * (l - 3), 2.1f, 2.6f))
+                val m = world.missile(p.x, p.y - 12f, rnd(-40f, 40f), -230f, 7f, 8 + bonus, Palette.AMBER)
                 m.turn = 2.6f
-                m.splash = 92f
+                m.splash = 38f
             }
             else -> {
                 swarmT = cd(world, 2.0f - 0.2f * l)
@@ -723,8 +729,8 @@ class Arsenal(private val fx: Fx) {
         val aegis = lo.branch[Aug.ORBIT] == Aug.A
         val sentry = lo.branch[Aug.ORBIT] == Aug.B
         val dmg = when {
-            aegis -> 7f + 2f * lo.lvl[Aug.ORBIT]
-            else -> 6f + 2.6f * lo.lvl[Aug.ORBIT]
+            aegis -> 16f + 5f * lo.lvl[Aug.ORBIT]
+            else -> 17f + 6f * lo.lvl[Aug.ORBIT]
         }
 
         if (sentry) {
@@ -752,7 +758,7 @@ class Arsenal(private val fx: Fx) {
                     val rr = e.r + nodeR
                     if (len(e.x - nx, e.y - ny) <= rr) {
                         world.hit(e, dmg, nx, ny, true)
-                        nodeCd[i] = 0.32f
+                        nodeCd[i] = 0.20f
                         fx.burst(nx, ny, 5, Palette.AMBER, 180f, 2f, 0.3f)
                         break
                     }

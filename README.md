@@ -4,7 +4,7 @@ A synthwave arcade shoot-'em-up for Android. One thumb, no menus to wade through
 no dependencies — pure Kotlin drawing onto a `SurfaceView`.
 
 <p align="center">
-  <img src="docs/preview/menu.png" width="32%" alt="Title screen" />
+  <img src="docs/preview/menu.png" width="32%" alt="Battle tab" />
   <img src="docs/preview/gameplay.png" width="32%" alt="Gameplay" />
   <img src="docs/preview/augments.png" width="32%" alt="Augment choice" />
 </p>
@@ -19,9 +19,9 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
   <img src="docs/preview/boss.png" width="32%" alt="Boss fight" />
 </p>
 <p align="center">
-  <img src="docs/preview/records.png" width="32%" alt="Records" />
+  <img src="docs/preview/records.png" width="32%" alt="Pilot tab" />
   <img src="docs/preview/new-systems.png" width="32%" alt="Time field and ricochet orbs" />
-  <img src="docs/preview/summon.png" width="32%" alt="Ten-pull" />
+  <img src="docs/preview/wide-draft.png" width="32%" alt="A four-card draft" />
 </p>
 
 <p align="center">
@@ -173,6 +173,8 @@ offers are level-ups of what you already carry. Early picks are commitments.
 The HUD shows `AUGMENTS n/8` above the lives, and the choice screen shows the
 bay state, so you always know how much room is left.
 
+With WIDE DRAFT bought, every offer shows a fourth card instead of three.
+
 **Split choices.** Level an ability to 3 and it must **evolve** — and the next
 offer puts *both* branches on the table together, so the fork is always an
 explicit choice, never a card you might never be shown. Evolved abilities keep
@@ -254,20 +256,66 @@ carries on solo.
 Co-op needs `INTERNET` and `ACCESS_NETWORK_STATE`, used only for a socket between
 the two phones. The game makes no other network calls.
 
+### Menu
+
+The menu is a five-tab shell with a bottom bar, the way a phone game should be.
+A strip along the top always shows pilot rank, progress towards the next one and
+the core balance; the tab bar along the bottom never moves, with **BATTLE**
+raised in the middle.
+
+| Tab | What lives there |
+| --- | --- |
+| **SHOP** | Fourteen permanent upgrades, the later half gated behind pilot rank |
+| **HANGAR** | The hull roster, the summon buttons and the live pull odds |
+| **BATTLE** | The hull and sector you will launch in, the PLAY button, co-op, and the three open contracts |
+| **SECTORS** | The ten sectors, locked ones showing what they want |
+| **PILOT** | Rank, the record sheet, the sector checklist and the sound settings |
+
+### Contracts
+
+Three rolling objectives sit on the BATTLE tab: destroy N enemies, reach a wave,
+graze N shots, bring down N bosses, clear a sector, and so on. They fill in as
+you fly and pay cores and experience when claimed, at which point a fresh
+contract rolls into the slot. Targets and payouts scale with your rank, so they
+stay worth doing.
+
+### Pilot rank
+
+Every run banks experience from its score, waves, kills and sectors cleared.
+Ranking up pays cores and opens the later shop items — TARGETING RIG at rank 2,
+COOLANT LINE at 4, GRAZE FIELD at 5, FORTUNE CIRCUIT at 6, WIDE DRAFT at 8 and
+EMERGENCY CORE at 10 — so the workshop keeps growing rather than being one long
+list from the first launch.
+
 ### Shop
 
-The other place cores go: permanent upgrades that carry into every run — HULL
-PLATING (an extra hull segment), PRIMED GUNS (launch part-upgraded), BAY
-EXPANSION (a ninth and tenth augment slot), SHIELD GENERATOR, CORE MAGNETISM
-(+cores earned), OVERDRIVE PRIMER (start part-charged) and SALVAGE CONTRACT
-(+score). Deliberately weighted towards smoothing the opening and the economy
-rather than raw late-game power.
+The other place cores go: fourteen permanent upgrades that carry into every run.
+
+| | Effect |
+| --- | --- |
+| **HULL PLATING** | An extra hull segment at launch |
+| **PRIMED GUNS** | Launch with the main cannon part-upgraded |
+| **BAY EXPANSION** | A ninth and tenth augment slot |
+| **SHIELD GENERATOR** | Start each run with a shield up |
+| **CORE MAGNETISM** | +15% cores per level from every run |
+| **OVERDRIVE PRIMER** | Begin with the meter part charged |
+| **SALVAGE CONTRACT** | +10% score per level |
+| **TARGETING RIG** | +6% damage per level, from every source |
+| **COOLANT LINE** | -7% cooldown per level on every ability system |
+| **SCAVENGER** | +22% chance of a pickup per level |
+| **GRAZE FIELD** | +30% graze radius per level |
+| **FORTUNE CIRCUIT** | Leans the summon weights towards the rarer hulls |
+| **WIDE DRAFT** | Every upgrade offers a fourth card |
+| **EMERGENCY CORE** | Once a run, come back instead of going down |
+
+The first seven smooth the opening and the economy; the last two are
+run-changing and priced as long-term goals.
 
 ### Records
 
-A menu screen tracking best score, furthest wave, levels cleared, best combo,
-runs flown, total kills, cores earned, hulls owned and summons, plus a checklist
-of which of the ten levels you have reached.
+The PILOT tab tracks best score, furthest wave, sectors cleared, best combo,
+runs flown, total kills, contracts completed, cores earned, hulls owned and
+summons, plus a checklist of which of the ten sectors you have reached.
 
 Duplicates refund cores, scaled by rarity.
 
@@ -279,7 +327,7 @@ a sweeping one-pole filter and a soft clipper. Eleven tracks (menu plus one per
 level), each built from four alternating bars with an arpeggio layer, a
 detuned lead, octave-jumping bass and a drum fill closing every fourth bar.
 Boss waves switch the arrangement to a busier mix. No audio files ship with
-the game. Music, effects and haptics each toggle from the title screen.
+the game. Music, effects and haptics each toggle from the PILOT tab.
 
 ### Enemies
 
@@ -324,6 +372,7 @@ app/src/main/java/com/neonvoid/game/
   Augments.kt       Augment catalogue, evolution branches, offer generation
                     and every stat the loadout derives
   Levels.kt         The ten level themes: palettes, rosters, boss pools, music
+  Progress.kt       Pilot rank, the run tally and the rolling contracts
   Shop.kt           Permanent core-bought upgrades and the bonuses they grant
   PlayerSlot.kt     One pilot: ship, loadout, ability systems
   Protocol.kt       Co-op wire format: handshake, input, snapshots, draft
@@ -359,7 +408,8 @@ Most of the feel lives in a handful of constants:
 - `Aug.MAX_SLOTS`, `MAX_ABILITIES`, `BASE_MAX`, `EVOLVED_MAX` — how specialised
   a run gets and how hard the choices bite
 - `Levels.list` / `WAVES_PER_LEVEL` — level themes and chapter length
-- `Shop.items` — permanent upgrade costs and caps
+- `Shop.items` — permanent upgrade costs, caps and rank gates
+- `Rank.toNext` / `Rank.xpFor` / `Missions.reward` — how fast the meta moves
 - `ShipDex.list` / `Rarity.weights` — hull stats and pull rates
 - `Loadout` derived getters — what each stat module is worth
 - `World.dropLoot` — pickup rates and the weapon pity curve
@@ -388,15 +438,23 @@ validated headlessly here:
   crosses the wire, and pulling the partner's plug leaves the host flying solo
   rather than crashing. Local-ship prediction lands within 1.8 units of the host
   on average.
-- Every ability path forced and played: all 42 combinations (fourteen abilities, base
-  plus both evolutions) run 150 simulated seconds each without a crash, and land
-  within a reasonable band of each other on wave reached and score.
+- Every ability path forced and played: all 42 combinations (fourteen abilities,
+  base plus both evolutions) run 150 simulated seconds each without a crash. The
+  suite is also the balance yardstick — eight passes per path, compared on the
+  median score, which is what the augment tuning was done against. Note the
+  scripted pilot is invulnerable and weaves along the bottom of the screen, so it
+  systematically undervalues defensive and proximity systems (AEGIS, STASIS,
+  REPULSOR, CHRONO, ORBIT): those read low here and were left deliberately above
+  where the metric alone would put them.
 - The soundtrack rendered offline to WAV and checked for level, clipping and
   rhythmic structure — the synth is deliberately free of Android imports so the
   audio that ships is the audio that was inspected.
-- Driven through every UI transition with synthetic touches: menu → hangar →
-  summon → reveal → hull select → play → augment choice → pause → resume →
-  app-pause → back → death → retry.
+- Driven through every UI transition with synthetic touches, including all 25
+  tab-bar transitions, every shop card (buying the open ones and confirming the
+  rank-locked ones refuse), every sector card (unlocked select, locked refuse),
+  claiming a contract, the sound toggles, and then hangar → summon → reveal →
+  hull select → play → augment choice → pause → resume → app-pause → back →
+  death → retry.
 - Rendered to PNG by backing the Canvas stubs with Java2D, which produced the
   screenshots above.
 

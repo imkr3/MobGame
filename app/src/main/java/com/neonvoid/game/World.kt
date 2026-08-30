@@ -103,6 +103,12 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     /** How many themed levels the run has completed. */
     var levelsCleared = 0
         private set
+
+    /** What this run contributed, read by the contracts when it ends. */
+    val tally = RunTally()
+
+    /** Free respawns left, bought in the shop. */
+    private var revives = 0
     private var killsSinceWeapon = 0
     var gameOver = false
         private set
@@ -127,6 +133,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         internal set
 
     private fun scoreMultiplier(): Float = loadout.scoreMul() * ship.scoreMul * meta.scoreMul
+
+    /** GRAZE FIELD widens the window that charges overdrive. */
+    private val grazeRadius: Float get() = GRAZE_R * meta.grazeMul
 
     val multiplier: Float
         get() = clamp(1f + combo * 0.1f, 1f, 9.9f)
@@ -154,6 +163,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         score = 0; combo = 0; maxCombo = 0; comboT = 0f
         wave = 0; kills = 0; killsSinceWeapon = 4; gameOver = false
         levelsCleared = 0
+        tally.reset()
+        revives = meta.revives
         pendingAugment = false
         boss = null; bossHpRatio = 0f
         awaitingNextWave = true
@@ -222,6 +233,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val p = slots[slotIndex].player
         p.odTime = OD_DURATION * slots[slotIndex].loadout.overdriveSeconds()
         p.overdrive = 0f
+        tally.overdrives++
         val gained = clearHostileBullets(true)
         fx.shockwave(p.x, p.y, w * 1.3f, Palette.AMBER, 0.6f, 5f)
         fx.shockwave(p.x, p.y, w * 0.8f, Palette.WHITE, 0.4f, 3f)
@@ -240,6 +252,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         private set
 
     /** Offers for the between-wave choice, for whoever is picking. */
+    /** WIDE DRAFT buys a fourth card, so the caller asks the world, not itself. */
+    val draftCards: Int get() = meta.draftCards
+
     fun rollAugments(count: Int): List<AugCard> = slots[augmentSlot].loadout.rollOffers(count)
 
     private fun openDraft() {
@@ -259,6 +274,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             Aug.HARDPOINT -> player.weapon = (player.weapon + 1).coerceAtMost(loadout.maxWeapon())
         }
         s.awaitingAugment = false
+        tally.augments++
         val next = slots.indexOfFirst { it.awaitingAugment }
         if (next >= 0) {
             augmentSlot = next
@@ -373,8 +389,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     /** STASIS: a shot held long enough dissolves and pays out. */
     internal fun bankBullet(b: Bullet) {
         b.active = false
-        score += (14 * multiplier).toInt()
-        fx.popText(b.x, b.y, "+${(14 * multiplier).toInt()}", Palette.WHITE, 13f, 0.5f)
+        val paid = (30 * multiplier * scoreMultiplier()).toInt()
+        score += paid
+        fx.popText(b.x, b.y, "+$paid", Palette.WHITE, 13f, 0.5f)
         fx.burst(b.x, b.y, 4, Palette.WHITE, 150f, 1.8f, 0.3f)
     }
 
@@ -939,17 +956,17 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         if (fl > 0) {
             when (loadout.branch[Aug.FRACTURE]) {
                 Aug.A -> {                                   // SHATTER: a wall of glass
-                    b.fracture = 6 + fl
-                    b.shardDamage = 2 + fl
+                    b.fracture = 4 + fl / 2
+                    b.shardDamage = 1 + fl / 2
                 }
                 Aug.B -> {                                   // RUPTURE: few, heavy, seeking
-                    b.fracture = 3
-                    b.shardDamage = 4 + 2 * fl
+                    b.fracture = 2
+                    b.shardDamage = 1 + (fl * 3) / 4
                     b.shardHoming = true
                 }
                 else -> {
-                    b.fracture = 2 + fl
-                    b.shardDamage = 1 + fl
+                    b.fracture = 2
+                    b.shardDamage = 1 + fl / 2
                 }
             }
         }
@@ -996,27 +1013,27 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         when (loadout.branch[Aug.SPREAD]) {
             Aug.A -> { // FAN: a wide, fast curtain
                 val extra = lvl - 3
-                val n = 8 + extra
+                val n = 6 + extra
                 for (i in 0 until n) {
                     val ang = -66f + i * (132f / (n - 1))
-                    playerShot(s, 0f, -8f, ang, 3.3f, (d * 0.8f).toInt())
+                    playerShot(s, 0f, -8f, ang, 3.3f, (d * 0.54f).toInt())
                 }
             }
             Aug.B -> { // PHALANX: heavy piercing bolts
                 val extra = lvl - 3
                 for (i in 0 until 4) {
                     val off = (i - 1.5f) * 14f
-                    val b = playerShot(s, off, -10f, 0f, 5.6f, (d * 1.6f).toInt() + extra)
+                    val b = playerShot(s, off, -10f, 0f, 5.6f, (d * 1.1f).toInt() + extra)
                     b.pierce = 2 + extra
                 }
             }
             else -> {
                 val angles = when (lvl) {
                     1 -> floatArrayOf(-22f, 22f)
-                    2 -> floatArrayOf(-22f, 22f, -40f, 40f)
-                    else -> floatArrayOf(-18f, 18f, -34f, 34f, -52f, 52f)
+                    2 -> floatArrayOf(-24f, 24f, -42f, 42f)
+                    else -> floatArrayOf(-20f, 20f, -38f, 38f)
                 }
-                for (a in angles) playerShot(s, 0f, -8f, a, 3.6f, d)
+                for (a in angles) playerShot(s, 0f, -8f, a, 3.6f, (d * 0.62f).toInt())
             }
         }
     }
@@ -1160,9 +1177,10 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         // Weapon drops thin out as the gun grows, so the last levels are earned
         // rather than handed over; a long pity timer stops a cold streak dead.
         val starving = player.weapon < loadout.maxWeapon() && killsSinceWeapon >= 14 + player.weapon * 6
-        val weaponChance = 0.042f * bias * clamp(1f - player.weapon * 0.13f, 0.3f, 1f)
-        val lifeChance = if (fromTough) 0.012f * bias else 0f
-        val shieldChance = if (player.shield >= loadout.maxShield()) 0f else 0.018f * bias
+        val luck = meta.dropMul
+        val weaponChance = 0.042f * bias * luck * clamp(1f - player.weapon * 0.13f, 0.3f, 1f)
+        val lifeChance = if (fromTough) 0.012f * bias * luck else 0f
+        val shieldChance = if (player.shield >= loadout.maxShield()) 0f else 0.018f * bias * luck
         // Cumulative windows - each kind needs its own slice of the roll, or the
         // later branches are simply unreachable.
         val wEnd = weaponChance
@@ -1258,8 +1276,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 b.active = false
                 if (!invulnerable) { hurtPlayer(s); return true }
                 fx.burst(b.x, b.y, 4, Palette.AMBER, 150f, 2f, 0.3f)
-            } else if (!b.grazed && d2 <= GRAZE_R * GRAZE_R) {
+            } else if (!b.grazed && d2 <= grazeRadius * grazeRadius) {
                 b.grazed = true
+                tally.grazes++
                 player.overdrive = clamp(
                     player.overdrive + loadout.grazeCharge() * ship.grazeMul * loadout.overdriveCharge(),
                     0f, 1f
@@ -1337,6 +1356,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 fx.flash(Palette.ROSE, 0.25f)
             }
             else -> {
+                tally.gems++
                 val v = (200 * multiplier * scoreMultiplier() * (1f + loadout.gemBonus() * 0.5f)).toInt()
                 score += v
                 fx.popText(u.x, u.y, "+$v", Palette.AMBER, 16f, 0.7f)
@@ -1350,7 +1370,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         haptics.light()
     }
 
-    internal fun hit(e: Enemy, dmg: Float, hx: Float, hy: Float, spark: Boolean = true) {
+    internal fun hit(e: Enemy, dmgRaw: Float, hx: Float, hy: Float, spark: Boolean = true) {
+        val dmg = dmgRaw * meta.damageMul
         // Bosses are meant to be a wall, not a wall you can be stuck against:
         // past a minute the fight starts giving, so a weak build still ends it.
         val impatience =
@@ -1397,6 +1418,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         score += gained
 
         if (e.kind == EK.BOSS) {
+            tally.bosses++
             boss = null
             bossHpRatio = 0f
             fx.freeze(0.22f)
@@ -1488,6 +1510,23 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             return
         }
 
+        if (player.lives <= 1 && revives > 0) {
+            // EMERGENCY CORE: one comeback per run instead of the last life
+            revives--
+            player.invuln = 3f + loadout.mercyBonus()
+            player.shield = loadout.maxShield()
+            clearHostileBullets(false)
+            fx.shockwave(player.x, player.y, w * 1.2f, Palette.WHITE, 0.7f, 5f)
+            fx.flash(Palette.WHITE, 0.6f)
+            fx.shake(0.5f)
+            fx.popText(player.x, player.y - 60f, "EMERGENCY CORE", Palette.WHITE, 22f, 1.4f)
+            sound?.sfx(Sfx.OVERDRIVE)
+            haptics.heavy()
+            combo = 0
+            comboT = 0f
+            return
+        }
+
         player.lives--
         player.alive = false
         player.respawnT = 1.3f
@@ -1549,6 +1588,14 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     /** Set from snapshots when this world is a client-side mirror. */
     private var netBoss = false
+
+    /** Freezes the run's headline numbers into the tally. */
+    fun sealTally() {
+        tally.score = score
+        tally.wave = wave
+        tally.kills = kills
+        tally.levels = levelsCleared
+    }
 
     fun bossPresent(): Boolean = netBoss || (boss != null && boss?.active == true)
 

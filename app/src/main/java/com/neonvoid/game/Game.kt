@@ -43,6 +43,7 @@ class Game(context: Context) {
     init {
         world.sound = audio
         world.ship = ShipDex.byId(prefs.selectedShip)
+        Missions.ensureRolled(prefs)
     }
 
     private var scale = 1f
@@ -63,6 +64,9 @@ class Game(context: Context) {
     /** Sectors that opened up during the run just finished. */
     private var freshUnlocks: List<Int> = emptyList()
     private var unlockMask = 0
+    /** Cores paid by rank-ups and claimed contracts on the last game-over. */
+    private var rankCores = 0
+    private var ranksGained = 0
 
     // ---- co-op ----------------------------------------------------------
     private var netRole = NetRole.NONE
@@ -151,7 +155,7 @@ class Game(context: Context) {
 
     private fun openAugmentChoice() {
         if (partnerPicking) return
-        offers = world.rollAugments(3)
+        offers = world.rollAugments(world.draftCards)
         if (offers.isEmpty()) {          // everything maxed: skip the screen
             world.applyAugment(AugCard(Aug.SALVAGE, 0, "SALVAGE", "BONUS", "", Palette.AMBER))
             return
@@ -249,25 +253,23 @@ class Game(context: Context) {
         synchronized(inputLock) { pool.addAll(batch) }
     }
 
+    /** The five menu screens are tabs of one shell, so the bar is always live. */
+    private fun tabbed(vararg own: Button): List<Button> =
+        ArrayList<Button>(own.size + hud.navCells.size).apply {
+            addAll(own)
+            addAll(hud.navCells)
+        }
+
     private fun buttonsFor(): List<Button> = when (state) {
-        State.MENU -> listOf(
-            hud.play, hud.levels, hud.hangar, hud.shop, hud.records, hud.coop,
-            hud.music, hud.sfx, hud.haptic
-        )
+        State.MENU -> tabbed(hud.play, hud.coop, *hud.missionRows)
         State.PLAYING -> listOf(hud.pause)
         State.PAUSED -> listOf(hud.resume, hud.restart, hud.quit)
         State.GAME_OVER -> listOf(hud.retry, hud.toMenu)
         State.AUGMENT -> (0 until hud.cardCount).map { hud.cards[it].btn }
-        State.HANGAR -> ArrayList<Button>(hud.shipCells.size + 3).apply {
-            add(hud.summon); add(hud.summon10); add(hud.back); addAll(hud.shipCells)
-        }
-        State.SHOP -> ArrayList<Button>(hud.shopRows.size + 1).apply {
-            add(hud.back); addAll(hud.shopRows)
-        }
-        State.RECORDS -> listOf(hud.back)
-        State.LEVELS -> ArrayList<Button>(hud.levelCells.size + 2).apply {
-            add(hud.back); add(hud.launch); addAll(hud.levelCells)
-        }
+        State.HANGAR -> tabbed(hud.summon, hud.summon10, *hud.shipCells)
+        State.SHOP -> tabbed(*hud.shopRows)
+        State.RECORDS -> tabbed(hud.music, hud.sfx, hud.haptic)
+        State.LEVELS -> tabbed(hud.launch, *hud.levelCells)
         State.COOP -> when (coopStage) {
             0 -> listOf(hud.back, hud.hostGame, hud.joinGame)
             1 -> listOf(hud.back, hud.startCoop)
@@ -345,27 +347,43 @@ class Game(context: Context) {
         }
     }
 
+    /** Maps a tab cell to the screen behind it. */
+    private fun openTab(tab: Int) {
+        state = when (tab) {
+            Hud.Tab.SHOP -> State.SHOP
+            Hud.Tab.HANGAR -> State.HANGAR
+            Hud.Tab.SECTORS -> State.LEVELS
+            Hud.Tab.PILOT -> State.RECORDS
+            else -> State.MENU
+        }
+        clearPressed()
+    }
+
     private fun activate(b: Button) {
         audio.sfx(Sfx.UI)
+        val tab = hud.navCells.indexOfFirst { it === b }
+        if (tab >= 0) { openTab(tab); return }
         if (state == State.SHOP) {
-            if (b === hud.back) { state = State.MENU; return }
             val idx = hud.shopRows.indexOfFirst { it === b }
             if (idx >= 0) buyUpgrade(idx)
             return
         }
         if (state == State.RECORDS) {
-            state = State.MENU
+            when (b) {
+                hud.music -> { prefs.musicOn = !prefs.musicOn; audio.applyPrefs() }
+                hud.sfx -> { prefs.sfxOn = !prefs.sfxOn; audio.applyPrefs() }
+                hud.haptic -> {
+                    prefs.hapticsOn = !prefs.hapticsOn
+                    haptics.enabled = prefs.hapticsOn
+                    haptics.medium()
+                }
+            }
             return
         }
         if (state == State.LEVELS) {
-            when {
-                b === hud.back -> state = State.MENU
-                b === hud.launch -> startRun()
-                else -> {
-                    val idx = hud.levelCells.indexOfFirst { it === b }
-                    if (idx >= 0 && Levels.unlocked(idx, prefs)) prefs.startLevel = idx
-                }
-            }
+            if (b === hud.launch) { startRun(); return }
+            val idx = hud.levelCells.indexOfFirst { it === b }
+            if (idx >= 0 && Levels.unlocked(idx, prefs)) prefs.startLevel = idx
             return
         }
         if (state == State.COOP) {
@@ -376,7 +394,6 @@ class Game(context: Context) {
             when (b) {
                 hud.summon -> summon()
                 hud.summon10 -> summonTen()
-                hud.back -> state = State.MENU
                 else -> {
                     val idx = hud.shipCells.indexOfFirst { it === b }
                     if (idx >= 0 && ShipDex.isOwned(prefs.ownedShips, idx)) {
@@ -404,20 +421,13 @@ class Game(context: Context) {
             }
             return
         }
+        if (state == State.MENU) {
+            val slot = hud.missionRows.indexOfFirst { it === b }
+            if (slot >= 0) { claimContract(slot); return }
+        }
         when (b) {
             hud.play -> startRun()
-            hud.haptic -> {
-                prefs.hapticsOn = !prefs.hapticsOn
-                haptics.enabled = prefs.hapticsOn
-                haptics.medium()
-            }
-            hud.levels -> state = State.LEVELS
-            hud.hangar -> state = State.HANGAR
-            hud.shop -> state = State.SHOP
-            hud.records -> state = State.RECORDS
             hud.coop -> { state = State.COOP; coopStage = 0; coopStatus = ""; typedAddress = prefs.lastHost }
-            hud.music -> { prefs.musicOn = !prefs.musicOn; audio.applyPrefs() }
-            hud.sfx -> { prefs.sfxOn = !prefs.sfxOn; audio.applyPrefs() }
             hud.pause -> state = State.PAUSED
             hud.resume -> state = State.PLAYING
             hud.restart -> startRun()
@@ -488,8 +498,18 @@ class Game(context: Context) {
         partnerPicking = false
     }
 
+    /** Pays out a finished contract and rolls its replacement. */
+    private fun claimContract(slot: Int) {
+        val paid = Missions.claim(prefs, slot)
+        if (paid <= 0) return
+        audio.sfx(Sfx.POWERUP)
+        haptics.heavy()
+        fx.flash(Palette.LIME, 0.3f)
+    }
+
     private fun buyUpgrade(index: Int) {
         val item = Shop.items[index]
+        if (!Shop.available(item.id, prefs)) return
         val level = prefs.shopLevel(item.id)
         val cost = Shop.cost(item.id, level)
         if (cost < 0 || prefs.cores < cost) return
@@ -512,7 +532,8 @@ class Game(context: Context) {
         var refund = 0
         var bestRarity = 0
         for (i in 0 until 10) {
-            val ship = if (i == 9 && bestRarity < Rarity.RARE) ShipDex.rollAtLeast(Rarity.RARE) else ShipDex.roll()
+            val ship = if (i == 9 && bestRarity < Rarity.RARE) ShipDex.rollAtLeast(Rarity.RARE)
+                else ShipDex.roll(Shop.fortune(prefs))
             if (ship.rarity > bestRarity) bestRarity = ship.rarity
             val had = ShipDex.isOwned(owned, ship.id)
             results.add(ship)
@@ -536,7 +557,7 @@ class Game(context: Context) {
         if (prefs.cores < ShipDex.PULL_COST) return
         prefs.cores = prefs.cores - ShipDex.PULL_COST
         prefs.pulls = prefs.pulls + 1
-        val ship = ShipDex.roll()
+        val ship = ShipDex.roll(Shop.fortune(prefs))
         val had = ShipDex.isOwned(prefs.ownedShips, ship.id)
         revealShip = ship
         revealNew = !had
@@ -607,6 +628,11 @@ class Game(context: Context) {
                     prefs.totalCores = prefs.totalCores + coresEarned
                     prefs.totalKills = prefs.totalKills + world.kills
                     if (world.levelsCleared > prefs.bestLevel) prefs.bestLevel = world.levelsCleared
+                    world.sealTally()
+                    Missions.apply(prefs, world.tally)
+                    val before = prefs.rank
+                    rankCores = prefs.addXp(Rank.xpFor(world.tally))
+                    ranksGained = prefs.rank - before
                     freshUnlocks = newlyUnlocked()
                     lockoutT = 0.9f
                     clearPressed()
@@ -705,7 +731,7 @@ class Game(context: Context) {
                 hud.drawGame(c, world, time)
             }
             State.PAUSED -> { hud.drawGame(c, world, time, false); hud.drawPause(c, world, time) }
-            State.GAME_OVER -> { hud.drawGame(c, world, time, false); hud.drawGameOver(c, world, newBest, time, freshUnlocks) }
+            State.GAME_OVER -> { hud.drawGame(c, world, time, false); hud.drawGameOver(c, world, newBest, time, freshUnlocks, coresEarned + rankCores, ranksGained) }
             State.AUGMENT -> { hud.drawGame(c, world, time, false); hud.drawAugment(c, world, time) }
             State.HANGAR -> hud.drawHangar(c, prefs.selectedShip, time)
             State.SHOP -> hud.drawShop(c, time)

@@ -80,6 +80,65 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit().putBoolean("haptics", v).apply()
 
+    // ---------------------------------------------------------- pilot rank
+
+    var rank: Int
+        get() = sp.getInt("rank", 1).coerceIn(1, Rank.MAX)
+        set(v) = sp.edit().putInt("rank", v.coerceIn(1, Rank.MAX)).apply()
+
+    /** Experience banked towards the next rank, never the lifetime total. */
+    var xp: Int
+        get() = sp.getInt("xp", 0)
+        set(v) = sp.edit().putInt("xp", v.coerceAtLeast(0)).apply()
+
+    var missionsDone: Int
+        get() = sp.getInt("missions_done", 0)
+        set(v) = sp.edit().putInt("missions_done", v).apply()
+
+    /**
+     * Banks experience and climbs as far as it carries. Returns the cores the
+     * rank-ups paid, so the caller can show them.
+     */
+    fun addXp(amount: Int): Int {
+        if (amount <= 0) return 0
+        var r = rank
+        var x = xp + amount
+        var paid = 0
+        while (r < Rank.MAX && x >= Rank.toNext(r)) {
+            x -= Rank.toNext(r)
+            r++
+            paid += Rank.reward(r)
+        }
+        if (r >= Rank.MAX) x = 0
+        rank = r
+        xp = x
+        if (paid > 0) {
+            cores += paid
+            totalCores += paid
+        }
+        return paid
+    }
+
+    // ------------------------------------------------------------ contracts
+
+    fun missionKind(slot: Int): Int = sp.getInt("m_kind_$slot", 0)
+    fun missionTarget(slot: Int): Int = sp.getInt("m_target_$slot", 0)
+    fun missionProgress(slot: Int): Int = sp.getInt("m_prog_$slot", 0)
+    fun missionReward(slot: Int): Int = sp.getInt("m_reward_$slot", 0)
+
+    fun setMission(slot: Int, kind: Int, target: Int, progress: Int, reward: Int) {
+        sp.edit()
+            .putInt("m_kind_$slot", kind)
+            .putInt("m_target_$slot", target)
+            .putInt("m_prog_$slot", progress)
+            .putInt("m_reward_$slot", reward)
+            .apply()
+    }
+
+    fun setMissionProgress(slot: Int, progress: Int) {
+        sp.edit().putInt("m_prog_$slot", progress).apply()
+    }
+
     /** Cores earned from a finished run, the gacha currency. */
     fun coresFor(score: Int, wave: Int): Int = score / 400 + wave * 12 + 20
 

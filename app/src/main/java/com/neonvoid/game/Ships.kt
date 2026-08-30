@@ -166,12 +166,34 @@ object ShipDex {
     }
 
     /** Weighted pull: rarity first, then a uniform pick inside that rarity. */
-    fun roll(): Ship {
+    /** The pull weight of one rarity band at a given FORTUNE CIRCUIT level. */
+    fun weightOf(rarity: Int, fortune: Int): Int {
+        val w = Rarity.weights[rarity]
+        return if (rarity == Rarity.COMMON) (w * (1f - 0.16f * fortune)).toInt().coerceAtLeast(60)
+        else (w * (1f + 0.30f * fortune)).toInt()
+    }
+
+    /** Per-rarity pull chance, 0..1, for the hangar's odds strip. */
+    fun odds(fortune: Int): FloatArray {
+        val out = FloatArray(Rarity.names.size)
         var total = 0
-        for (s in list) total += Rarity.weights[s.rarity]
+        for (s in list) total += weightOf(s.rarity, fortune)
+        for (s in list) out[s.rarity] += weightOf(s.rarity, fortune).toFloat()
+        for (i in out.indices) out[i] /= total.coerceAtLeast(1)
+        return out
+    }
+
+    /**
+     * A pull. [fortune] is the FORTUNE CIRCUIT level, which leans the weights
+     * towards the rarer end without ever guaranteeing anything.
+     */
+    fun roll(fortune: Int = 0): Ship {
+        fun weight(rarity: Int): Int = weightOf(rarity, fortune)
+        var total = 0
+        for (s in list) total += weight(s.rarity)
         var pick = Random.nextInt(total)
         for (s in list) {
-            pick -= Rarity.weights[s.rarity]
+            pick -= weight(s.rarity)
             if (pick < 0) return s
         }
         return list[0]
