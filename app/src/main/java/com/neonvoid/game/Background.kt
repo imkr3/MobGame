@@ -3,6 +3,7 @@ package com.neonvoid.game
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import kotlin.math.cos
@@ -31,6 +32,10 @@ class Background {
     private var nebulaR = 1f
 
     private val stars = Array(120) { Star() }
+    private val motes = Array(56) { Mote() }
+    private val ridge = Path()
+    private val ridgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val hazePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private var gridPhase = 0f
     private var starPhase = 0f
@@ -80,6 +85,25 @@ class Background {
         )
         nebulaPaint.style = Paint.Style.FILL
 
+        // The horizon silhouette and the ground haze that sits over its feet,
+        // which is what stops the skyline reading as a flat cut-out.
+        Decor.buildRidge(ridge, theme.terrain, w, horizon, horizon + h * 0.06f, theme.name.hashCode())
+        ridgePaint.style = Paint.Style.FILL
+        ridgePaint.shader = LinearGradient(
+            0f, horizon - h * 0.11f, 0f, horizon + h * 0.06f,
+            intArrayOf(fade(theme.skyBottom, 0.95f), fade(theme.nebula, 0.55f), fade(theme.nebula, 0.10f)),
+            floatArrayOf(0f, 0.72f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        hazePaint.style = Paint.Style.FILL
+        hazePaint.shader = LinearGradient(
+            0f, horizon - h * 0.05f, 0f, horizon + h * 0.10f,
+            intArrayOf(fade(theme.accent, 0f), fade(theme.accent, 0.16f), fade(theme.accent, 0f)),
+            floatArrayOf(0f, 0.42f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        Decor.seedMotes(motes, theme.terrain, w, h, horizon)
+
         for (s in stars) {
             s.x = rnd(w)
             s.y = rnd(horizon)
@@ -100,6 +124,7 @@ class Background {
         if (gridPhase > 1f) gridPhase -= 1f
         starPhase += dt
         val boost = 1f + speed * 1.6f
+        Decor.updateMotes(motes, dt, boost, w, h)
         for (s in stars) {
             s.y += s.speed * boost * dt
             if (s.y > horizon) {
@@ -154,25 +179,33 @@ class Background {
             band *= 0.80f
             gap *= 1.24f
         }
+        // whatever this sector has standing on its horizon
+        c.drawPath(ridge, ridgePaint)
+        c.drawRect(0f, horizon - h * 0.05f, w, horizon + h * 0.10f, hazePaint)
         Neon.hairline(c, 0f, horizon, w, horizon, fade(theme.accent, 0.55f), 2.2f)
         Neon.hairline(c, 0f, horizon, w, horizon, fade(theme.accent, 0.16f), 8f)
 
         // perspective grid
         val depth = h - horizon
-        val gridColor = fade(theme.grid, 0.15f)
-        val vpX = cx
-        for (i in -gridCols..gridCols) {
-            val bx = cx + i * (w * 0.135f)
-            Neon.hairline(c, vpX, horizon, bx, h, fade(theme.nebula, 0.13f), 1.2f)
+        if (Decor.hasGrid(theme.terrain)) {
+            val gridColor = fade(theme.grid, 0.15f)
+            val vpX = cx
+            for (i in -gridCols..gridCols) {
+                val bx = cx + i * (w * 0.135f)
+                Neon.hairline(c, vpX, horizon, bx, h, fade(theme.nebula, 0.13f), 1.2f)
+            }
+            val rows = 13
+            for (i in 0 until rows) {
+                var t = (i + gridPhase) / rows
+                t *= t
+                val ly = horizon + depth * t
+                val a = 0.06f + 0.20f * t
+                Neon.hairline(c, 0f, ly, w, ly, fade(gridColor, a * 4f), 1.1f + t * 1.6f)
+            }
         }
-        val rows = 13
-        for (i in 0 until rows) {
-            var t = (i + gridPhase) / rows
-            t *= t
-            val ly = horizon + depth * t
-            val a = 0.06f + 0.20f * t
-            Neon.hairline(c, 0f, ly, w, ly, fade(gridColor, a * 4f), 1.1f + t * 1.6f)
-        }
+
+        // the sector's own furniture, on top of the ground and under the ships
+        Decor.draw(c, theme.terrain, theme, motes, w, h, horizon, time, gridPhase)
     }
 
     fun horizonY(): Float = horizon

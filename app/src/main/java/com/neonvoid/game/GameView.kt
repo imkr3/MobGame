@@ -68,6 +68,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         stopLoop()
     }
 
+    /** The activity is going away for good: release the render thread's world. */
+    fun onDestroyGame() {
+        stopLoop()
+        game.onDestroy()
+    }
+
     fun handleBack(): Boolean = game.onBack()
 
     private fun startLoop() {

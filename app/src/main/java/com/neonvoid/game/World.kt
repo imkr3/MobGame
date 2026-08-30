@@ -30,6 +30,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
         /** How long the overload klaxon runs before settling to a low hum. */
         const val ALARM_TIME = 3.6f
+
+        /** Seconds an enemy may hold position before it is pushed off screen. */
+        const val HOLD_LIMIT = 26f
         const val GRAZE_R = 26f
         const val OD_DURATION = 3.2f
         const val COMBO_WINDOW = 3.2f
@@ -1101,6 +1104,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
     }
 
+    /** True once an enemy has held the field long enough that it is leaving. */
+    internal fun retiring(e: Enemy): Boolean = e.kind != EK.BOSS && e.t > HOLD_LIMIT
+
     internal fun countActive(kind: Int): Int = enemies.count { it.active && it.kind == kind }
 
     internal fun spawnMinion(kind: Int, x: Float, y: Float): Enemy? =
@@ -1113,6 +1119,19 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             if (e.hitFlash > 0f) e.hitFlash -= dt
 
             if (e.telegraph > 0f && e.kind != EK.LANCER) e.telegraph = 0f
+
+            // Nothing but a boss may hold the field forever. A wave only ends
+            // once the screen is clear, so a hovering enemy the player cannot
+            // finish off - a carrier, a minelayer, a lancer - would otherwise
+            // soft-lock the run with no way out but dying. Turrets and pylons
+            // already retire on their own; this catches every other kind.
+            if (retiring(e)) {
+                val push = (40f + (e.t - HOLD_LIMIT) * 60f) * dt
+                e.y += push
+                // an orbiter rebuilds its position from a stored centre every
+                // frame, so the centre has to move or the push is overwritten
+                if (e.kind == EK.ORBITER) e.aux2 += push
+            }
             if (e.burn > 0f) {
                 e.burn -= dt
                 if (chance(dt * 14f)) {
@@ -1276,7 +1295,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             val a = enemies[i]
             if (!a.active || a.kind != EK.PYLON || a.link <= i) continue
             val b = enemies[a.link]
-            if (!b.active || b.kind != EK.PYLON) continue
+            // the link is an index, and the slot may have been recycled by a
+            // different pylon since; only a mutual link is a real pair
+            if (!b.active || b.kind != EK.PYLON || b.link != i) continue
             if (a.state != 2 || b.state != 2) continue
             if (player.invuln <= 0f && player.odTime <= 0f &&
                 distToSegment(player.x, player.y, a.x, a.y, b.x, b.y) < 9f + player.hitR
@@ -1391,6 +1412,11 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     private fun killEnemy(e: Enemy) {
         e.active = false
+        if (e.kind == EK.PYLON && e.link >= 0) {
+            val partner = enemies[e.link]
+            if (partner.link == enemies.indexOf(e)) partner.link = -1
+            e.link = -1
+        }
         kills++
         killsSinceWeapon++
         combo++
@@ -1549,7 +1575,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             val a = enemies[i]
             if (!a.active || a.kind != EK.PYLON || a.link <= i) continue
             val b = enemies[a.link]
-            if (!b.active || b.kind != EK.PYLON) continue
+            // the link is an index, and the slot may have been recycled by a
+            // different pylon since; only a mutual link is a real pair
+            if (!b.active || b.kind != EK.PYLON || b.link != i) continue
             if (a.state < 1 || b.state < 1 || a.state > 2 || b.state > 2) continue
             Draw.pylonTether(c, a, b, a.state == 2 && b.state == 2, minOf(a.telegraph, b.telegraph))
         }
@@ -1595,6 +1623,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         levelsCleared = s.levelsCleared
         // overload is a pure function of sectors cleared, so the mirror needs
         // no extra field on the wire to show the same killscreen
+        if (s.levelsCleared > overload) overloadAlarm = ALARM_TIME
         overload = s.levelsCleared
         bossHpRatio = s.bossHpRatio
         netBoss = s.bossPresent

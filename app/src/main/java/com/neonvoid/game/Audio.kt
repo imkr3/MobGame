@@ -22,6 +22,11 @@ class Audio(private val prefs: Prefs) : SoundBus {
     private var thread: Thread? = null
     private var track: AudioTrack? = null
 
+    /**
+     * Pulls the toggles off SharedPreferences. Called when a setting changes,
+     * never from inside the render loop: SharedPreferences takes a lock on
+     * every read, and the audio thread was doing two of them per 23ms buffer.
+     */
     fun applyPrefs() {
         synth.musicOn = prefs.musicOn
         synth.sfxOn = prefs.sfxOn
@@ -90,7 +95,6 @@ class Audio(private val prefs: Prefs) : SoundBus {
             // Small chunks keep effect latency low; the blocking write paces the loop.
             val chunk = ShortArray(512)
             while (running) {
-                applyPrefs()
                 synth.render(chunk, chunk.size)
                 val written = t.write(chunk, 0, chunk.size)
                 if (written < 0) break

@@ -16,6 +16,20 @@ object BT {
  * music. Levels change the look and the cast, never the difficulty - that is
  * driven purely by the wave number, so the run keeps escalating across them.
  */
+/** Which backdrop furniture a sector flies through. */
+object Terrain {
+    const val GRID = 0        // outer grid: a city skyline on the horizon
+    const val BELT = 1        // asteroid lanes: tumbling rock at three depths
+    const val STATION = 2     // dead station: girder frames scrolling past
+    const val FOUNDRY = 3     // foundry ring: pipe bands and gear wheels
+    const val VOID = 4        // no signal: drifting wireframe hulks and static
+    const val OVERGROWN = 5   // overgrown yard: fronds and drifting spores
+    const val ASH = 6         // burnt corridor: rising embers, smoke, pillars
+    const val ICE = 7         // frozen array: crystal spires and falling shards
+    const val BLOOM = 8       // bloom field: petals and soft gas
+    const val HOLLOW = 9      // nothing answers: near-empty, glitching
+}
+
 class LevelTheme(
     val name: String,
     val subtitle: String,
@@ -28,7 +42,8 @@ class LevelTheme(
     val nebula: Int,
     val roster: IntArray,
     val bossPool: IntArray,
-    val musicKey: Int
+    val musicKey: Int,
+    val terrain: Int = Terrain.GRID
 )
 
 /** What a level asks of you before it opens up. */
@@ -76,7 +91,7 @@ object Levels {
             sunStops = intArrayOf(0xCCFFE07A.toInt(), 0xC6FFB13D.toInt(), 0xBFFF4FA3.toInt(), 0xB3B13BFF.toInt()),
             grid = Palette.CYAN, nebula = Palette.VIOLET,
             roster = intArrayOf(EK.DRIFTER, EK.WEAVER, EK.CHARGER, EK.SWARMER),
-            bossPool = intArrayOf(BT.GUARDIAN, BT.WARDEN), musicKey = 1
+            bossPool = intArrayOf(BT.GUARDIAN, BT.WARDEN), musicKey = 1, terrain = Terrain.GRID
         ),
         LevelTheme(
             name = "CRIMSON BELT", subtitle = "ASTEROID LANES", accent = 0xFFFF5C3D.toInt(),
@@ -84,7 +99,7 @@ object Levels {
             sunStops = intArrayOf(0xCCFFF0A0.toInt(), 0xC6FF8A3D.toInt(), 0xBFFF3B4F.toInt(), 0xB3A81E5A.toInt()),
             grid = 0xFFFF6B5C.toInt(), nebula = 0xFFFF4A5C.toInt(),
             roster = intArrayOf(EK.DRIFTER, EK.CHARGER, EK.SWARMER, EK.LANCER, EK.WISP),
-            bossPool = intArrayOf(BT.WARDEN, BT.GUARDIAN, BT.FORGE), musicKey = 2
+            bossPool = intArrayOf(BT.WARDEN, BT.GUARDIAN, BT.FORGE), musicKey = 2, terrain = Terrain.BELT
         ),
         LevelTheme(
             name = "VIOLET DEPTHS", subtitle = "DEAD STATION", accent = Palette.VIOLET,
@@ -92,7 +107,7 @@ object Levels {
             sunStops = intArrayOf(0xCCB0E8FF.toInt(), 0xC67AA2FF.toInt(), 0xBF6B4FFF.toInt(), 0xB33B1EA8.toInt()),
             grid = 0xFF7A5CFF.toInt(), nebula = 0xFF5C7AFF.toInt(),
             roster = intArrayOf(EK.WEAVER, EK.TURRET, EK.ORBITER, EK.MINELAYER, EK.PYLON),
-            bossPool = intArrayOf(BT.HIVE, BT.NULLIFIER), musicKey = 3
+            bossPool = intArrayOf(BT.HIVE, BT.NULLIFIER), musicKey = 3, terrain = Terrain.STATION
         ),
         LevelTheme(
             name = "GOLD CIRCUIT", subtitle = "FOUNDRY RING", accent = Palette.AMBER,
@@ -100,7 +115,7 @@ object Levels {
             sunStops = intArrayOf(0xCCFFFFC0.toInt(), 0xC6FFD93D.toInt(), 0xBF9BFF57.toInt(), 0xB33DBF7A.toInt()),
             grid = Palette.LIME, nebula = 0xFFBFA030.toInt(),
             roster = intArrayOf(EK.SPLITTER, EK.SHIELDER, EK.TURRET, EK.LANCER, EK.CARRIER),
-            bossPool = intArrayOf(BT.FORGE, BT.WARDEN), musicKey = 4
+            bossPool = intArrayOf(BT.FORGE, BT.WARDEN), musicKey = 4, terrain = Terrain.FOUNDRY
         ),
         LevelTheme(
             name = "VOID CORE", subtitle = "NO SIGNAL", accent = Palette.WHITE,
@@ -108,7 +123,7 @@ object Levels {
             sunStops = intArrayOf(0xCCFFFFFF.toInt(), 0xC6D0D0FF.toInt(), 0xBF9B5CFF.toInt(), 0xB3402080.toInt()),
             grid = 0xFFB0B0FF.toInt(), nebula = 0xFF8080FF.toInt(),
             roster = intArrayOf(EK.WISP, EK.ORBITER, EK.SPLITTER, EK.LANCER, EK.PYLON, EK.SHIELDER, EK.CHARGER),
-            bossPool = intArrayOf(BT.NULLIFIER, BT.FORGE, BT.HIVE), musicKey = 5
+            bossPool = intArrayOf(BT.NULLIFIER, BT.FORGE, BT.HIVE), musicKey = 5, terrain = Terrain.VOID
         ),
         LevelTheme(
             name = "EMERALD DRIFT", subtitle = "OVERGROWN YARD", accent = 0xFF57FFB0.toInt(),
@@ -116,7 +131,7 @@ object Levels {
             sunStops = intArrayOf(0xCCE8FFD0.toInt(), 0xC67AFFA0.toInt(), 0xBF2ED08A.toInt(), 0xB31A6B7A.toInt()),
             grid = 0xFF57FFB0.toInt(), nebula = 0xFF2EA88A.toInt(),
             roster = intArrayOf(EK.SPLITTER, EK.CARRIER, EK.SWARMER, EK.ORBITER, EK.WEAVER),
-            bossPool = intArrayOf(BT.HIVE, BT.FORGE), musicKey = 6
+            bossPool = intArrayOf(BT.HIVE, BT.FORGE), musicKey = 6, terrain = Terrain.OVERGROWN
         ),
         LevelTheme(
             name = "ASH REACH", subtitle = "BURNT CORRIDOR", accent = 0xFFFF9A4A.toInt(),
@@ -124,7 +139,7 @@ object Levels {
             sunStops = intArrayOf(0xCCFFD8B0.toInt(), 0xC6FF9A4A.toInt(), 0xBFC4552A.toInt(), 0xB35A2A20.toInt()),
             grid = 0xFFC08060.toInt(), nebula = 0xFF8A4A30.toInt(),
             roster = intArrayOf(EK.LANCER, EK.SHIELDER, EK.MINELAYER, EK.CHARGER, EK.DRIFTER),
-            bossPool = intArrayOf(BT.WARDEN, BT.FORGE, BT.GUARDIAN), musicKey = 7
+            bossPool = intArrayOf(BT.WARDEN, BT.FORGE, BT.GUARDIAN), musicKey = 7, terrain = Terrain.ASH
         ),
         LevelTheme(
             name = "AZURE SPIRE", subtitle = "FROZEN ARRAY", accent = 0xFF8AE6FF.toInt(),
@@ -132,7 +147,7 @@ object Levels {
             sunStops = intArrayOf(0xCCFFFFFF.toInt(), 0xC6BDF0FF.toInt(), 0xBF5AB8E8.toInt(), 0xB32A5A8A.toInt()),
             grid = 0xFF8AE6FF.toInt(), nebula = 0xFF4A9AD0.toInt(),
             roster = intArrayOf(EK.WISP, EK.PYLON, EK.ORBITER, EK.TURRET, EK.WEAVER),
-            bossPool = intArrayOf(BT.NULLIFIER, BT.GUARDIAN), musicKey = 8
+            bossPool = intArrayOf(BT.NULLIFIER, BT.GUARDIAN), musicKey = 8, terrain = Terrain.ICE
         ),
         LevelTheme(
             name = "ROSE NEBULA", subtitle = "BLOOM FIELD", accent = 0xFFFF8ACF.toInt(),
@@ -140,7 +155,7 @@ object Levels {
             sunStops = intArrayOf(0xCCFFE8F6.toInt(), 0xC6FF8ACF.toInt(), 0xBFD04AA0.toInt(), 0xB3702060.toInt()),
             grid = 0xFFFF8ACF.toInt(), nebula = 0xFFC04A9A.toInt(),
             roster = intArrayOf(EK.WEAVER, EK.SWARMER, EK.WISP, EK.SPLITTER, EK.ORBITER),
-            bossPool = intArrayOf(BT.GUARDIAN, BT.HIVE, BT.NULLIFIER), musicKey = 9
+            bossPool = intArrayOf(BT.GUARDIAN, BT.HIVE, BT.NULLIFIER), musicKey = 9, terrain = Terrain.BLOOM
         ),
         LevelTheme(
             name = "THE HOLLOW", subtitle = "NOTHING ANSWERS", accent = 0xFFE0E0E0.toInt(),
@@ -151,7 +166,7 @@ object Levels {
                 EK.LANCER, EK.SHIELDER, EK.CARRIER, EK.PYLON, EK.WISP,
                 EK.SPLITTER, EK.MINELAYER, EK.ORBITER, EK.CHARGER
             ),
-            bossPool = intArrayOf(BT.NULLIFIER, BT.FORGE, BT.WARDEN, BT.HIVE), musicKey = 10
+            bossPool = intArrayOf(BT.NULLIFIER, BT.FORGE, BT.WARDEN, BT.HIVE), musicKey = 10, terrain = Terrain.HOLLOW
         )
     )
 

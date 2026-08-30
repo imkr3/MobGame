@@ -150,6 +150,28 @@ the transition, so the screen clears on its own and what you dodged stays
 dodged. Past a minute in one fight the boss slowly starts giving, so a weak
 build is never stuck against an unkillable wall.
 
+### Sector terrain
+
+Sectors are not recolours of one backdrop. Each has its own **terrain**: a
+horizon silhouette built procedurally on resize, plus a parallax layer of
+furniture drawn behind the play field.
+
+| Sector | What you fly through |
+| --- | --- |
+| NEON REACH | A city skyline with windows blinking on and off |
+| CRIMSON BELT | Tumbling asteroids at three depths, and a debris band across the sun |
+| VIOLET DEPTHS | Girder frames sliding past on both edges with hazard lights |
+| GOLD CIRCUIT | Gear wheels behind the sun, pipe bands and rivets running with the grid |
+| VOID CORE | No grid at all: slow wireframe hulks and a field of dead pixels |
+| EMERALD DRIFT | Fronds leaning in from the edges, swaying, with spores drifting up |
+| ASH REACH | Burnt pillars, horizontal smoke and embers rising off the floor |
+| AZURE SPIRE | Crystal spires, falling shards and cold shafts of light |
+| ROSE NEBULA | Drifting petals and soft gas, no grid |
+| THE HOLLOW | Near-empty, far-off wrecks, and the signal dropping out |
+
+One pool of sixty parallax motes serves all ten — what they are drawn as, and
+how they move, is the terrain's business — so the variety costs one array.
+
 ### How a wave is built
 
 Waves are not a fixed rotation through the roster. Each one picks an
@@ -180,6 +202,13 @@ mines, **SWARMER** dives in packs, **SHIELDER** holds a plate towards you so
 shots have to come from the flank, **WISP** blinks after every burst,
 **CARRIER** keeps making swarmers until you deal with it, and **PYLON** drops in
 pairs that string a lethal line between them — kill either end to cut it.
+
+Ships are drawn with panel seams, intakes and a lit canopy on top of the neon
+silhouette, plus a rim light down the leading edge so hulls read as objects
+rather than cut-outs, and an exhaust plume that trails behind whichever way they
+are actually moving. As an enemy takes damage the same routine cracks it open:
+past 40% health it splits along widening seams, and below 30% a fire flickers
+inside it. You can see how close something is to dying without reading a bar.
 
 Elites start appearing from wave 7 — same silhouette, white halo, far more
 health, much better drops.
@@ -413,6 +442,7 @@ app/src/main/java/com/neonvoid/game/
   Augments.kt       Augment catalogue, evolution branches, offer generation
                     and every stat the loadout derives
   Levels.kt         The ten level themes: palettes, rosters, boss pools, music
+  Decor.kt          Per-sector terrain: silhouettes, parallax motes, furniture
   Waves.kt          Wave archetypes, formations and the mob budget
   Progress.kt       Pilot rank, the run tally and the rolling contracts
   Shop.kt           Permanent core-bought upgrades and the bonuses they grant
@@ -482,6 +512,18 @@ validated headlessly here:
   crosses the wire, and pulling the partner's plug leaves the host flying solo
   rather than crashing. Local-ship prediction lands within 1.8 units of the host
   on average.
+- Every parallel table cross-checked: the augment arrays all carry `Aug.COUNT`
+  entries with a branch pair per ability and no blank card copy, every sector has
+  an unlock rule, a four-stop sun, a real roster and a distinct terrain, hull and
+  shop ids match their array index, and there is a music track per sector. This
+  is the class of bug where adding one augment and forgetting one array is an
+  index crash on someone's phone rather than a compile error here.
+- Waves proven unable to stall: a pilot that never fires a shot and cannot die
+  is flown through four waves of all ten sectors, and every wave has to drain on
+  its own. This caught orbiters (which rebuild their position from a stored
+  centre each frame) and wisps (whose blink clamps them back to the top of the
+  screen) holding the field forever, either of which soft-locks a run with no
+  way out but dying.
 - The wave director checked over 480 non-boss waves: every archetype and every
   formation gets used, no archetype ever repeats back to back, and the mob count
   per wave stays on the curve the old fixed rotation produced.

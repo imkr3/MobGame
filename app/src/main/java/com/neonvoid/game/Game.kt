@@ -122,6 +122,9 @@ class Game(context: Context) {
     }
 
     fun onDestroy() {
+        // the co-op sockets and their reader threads outlive the activity
+        // otherwise, which leaks a listening port until the process dies
+        leaveCoop()
         audio.stop()
     }
 
@@ -191,6 +194,30 @@ class Game(context: Context) {
     private fun selectedLevel(): Int {
         val want = prefs.startLevel.coerceIn(0, Levels.list.size - 1)
         return if (Levels.unlocked(want, prefs)) want else 0
+    }
+
+    /**
+     * Everything a finished run owes the meta layer: records, cores, contracts
+     * and rank. Both the solo/host path and the co-op client end here, so a
+     * partner is paid for the run they just flew rather than only having their
+     * best score noted.
+     */
+    private fun settleRun() {
+        state = State.GAME_OVER
+        newBest = prefs.submit(world.score, world.wave, world.maxCombo)
+        coresEarned = (prefs.coresFor(world.score, world.wave) * Shop.coreMultiplier(prefs)).toInt()
+        prefs.cores = prefs.cores + coresEarned
+        prefs.totalCores = prefs.totalCores + coresEarned
+        prefs.totalKills = prefs.totalKills + world.kills
+        if (world.levelsCleared > prefs.bestLevel) prefs.bestLevel = world.levelsCleared
+        world.sealTally()
+        Missions.apply(prefs, world.tally)
+        val before = prefs.rank
+        rankCores = prefs.addXp(Rank.xpFor(world.tally))
+        ranksGained = prefs.rank - before
+        freshUnlocks = newlyUnlocked()
+        lockoutT = 0.9f
+        clearPressed()
     }
 
     /** Sectors that were shut when the run began and are open now. */
@@ -485,6 +512,10 @@ class Game(context: Context) {
         world.reset()
         host.beginRun()
         newBest = false
+        // without this a co-op game-over compares against a stale unlock mask
+        // and re-announces sectors that opened runs ago
+        freshUnlocks = emptyList()
+        unlockMask = Levels.unlockedMask(prefs)
         partnerPicking = false
         state = State.PLAYING
         clearPressed()
@@ -621,21 +652,7 @@ class Game(context: Context) {
                 }
                 if (world.gameOver) {
                     if (netRole == NetRole.HOST) host.sendOver(world)
-                    state = State.GAME_OVER
-                    newBest = prefs.submit(world.score, world.wave, world.maxCombo)
-                    coresEarned = (prefs.coresFor(world.score, world.wave) * Shop.coreMultiplier(prefs)).toInt()
-                    prefs.cores = prefs.cores + coresEarned
-                    prefs.totalCores = prefs.totalCores + coresEarned
-                    prefs.totalKills = prefs.totalKills + world.kills
-                    if (world.levelsCleared > prefs.bestLevel) prefs.bestLevel = world.levelsCleared
-                    world.sealTally()
-                    Missions.apply(prefs, world.tally)
-                    val before = prefs.rank
-                    rankCores = prefs.addXp(Rank.xpFor(world.tally))
-                    ranksGained = prefs.rank - before
-                    freshUnlocks = newlyUnlocked()
-                    lockoutT = 0.9f
-                    clearPressed()
+                    settleRun()
                 }
             }
             State.PAUSED -> { /* frozen */ }
@@ -665,6 +682,8 @@ class Game(context: Context) {
                     else -> client.message
                 }
                 if (client.stage == NetStage.RUNNING) {
+                    freshUnlocks = emptyList()
+                    unlockMask = Levels.unlockedMask(prefs)
                     world.ship = ShipDex.byId(prefs.selectedShip)
                     world.prepareMirror(ShipDex.byId(prefs.selectedShip), ShipDex.byId(client.hostShipId))
                     client.setBounds(vw, vh)
@@ -696,11 +715,8 @@ class Game(context: Context) {
             if (client.finalScore > 0) {
                 world.applyFinal(client.finalScore, client.finalWave, 0, 0, 0)
             }
-            newBest = prefs.submit(world.score, world.wave, world.maxCombo)
             netRole = NetRole.NONE
-            state = State.GAME_OVER
-            lockoutT = 0.9f
-            clearPressed()
+            settleRun()
         }
     }
 

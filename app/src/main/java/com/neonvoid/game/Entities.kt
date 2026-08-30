@@ -326,10 +326,13 @@ object Draw {
         val a = if (blink) 0.42f else 1f
         val s = p.bodyR
 
-        // engine plume
+        // engine plume: a wide soft wash, a bright core and a tapering trail
         val plume = (0.55f + p.thrust * 0.75f) * (0.85f + 0.15f * sin(timeNow * 40f))
-        Neon.orb(c, p.x, p.y + s * 0.85f, s * 0.30f * plume, fade(if (od) Palette.ROSE else Palette.MAGENTA, 0.75f * a), 1.1f)
+        val plumeCol = if (od) Palette.ROSE else Palette.MAGENTA
+        Neon.softDisc(c, p.x, p.y + s * 1.0f, s * 0.85f * plume, fade(plumeCol, 0.20f * a))
+        Neon.orb(c, p.x, p.y + s * 0.85f, s * 0.30f * plume, fade(plumeCol, 0.75f * a), 1.1f)
         Neon.orb(c, p.x, p.y + s * 1.25f * plume, s * 0.16f * plume, fade(Palette.VIOLET, 0.5f * a), 0.9f)
+        Neon.orb(c, p.x, p.y + s * 1.7f * plume, s * 0.08f * plume, fade(Palette.VIOLET, 0.3f * a), 0.7f)
 
         c.save()
         c.translate(p.x, p.y)
@@ -337,7 +340,18 @@ object Draw {
         c.scale(s, s)
         Neon.fillPath(c, hull, fade(baseColor, 0.16f * a))
         Neon.path(c, hull, fade(baseColor, a), 1.7f / s, 1f, 0.9f)
+        // rim light down the nose
+        c.save()
+        c.translate(0f, -0.06f)
+        c.scale(0.9f, 0.9f)
+        Neon.path(c, hull, fade(lighten(baseColor, 0.6f), 0.55f * a), 1.1f / s, 0f, 0.6f)
+        c.restore()
         Neon.path(c, Shapes.playerWing, fade(lighten(baseColor, 0.3f), 0.8f * a), 1.1f / s, 0.7f, 0.6f)
+        // panel seams and a lit canopy
+        Neon.hairline(c, -0.30f, 0.30f, 0f, -0.55f, fade(baseColor, 0.45f * a), 0.9f / s)
+        Neon.hairline(c, 0.30f, 0.30f, 0f, -0.55f, fade(baseColor, 0.45f * a), 0.9f / s)
+        val canopy = 0.7f + 0.3f * sin(timeNow * 3.2f)
+        Neon.orb(c, 0f, -0.30f, 0.17f, fade(lighten(baseColor, 0.8f), 0.9f * a * canopy), 0.9f)
         c.restore()
 
         if (p.shield > 0) {
@@ -365,6 +379,18 @@ object Draw {
         val flash = e.hitFlash
         val col = if (flash > 0f) mixColor(e.color, Palette.WHITE, clamp(flash * 3f, 0f, 0.85f)) else e.color
         val s = e.r
+
+        // exhaust, in world space so it trails behind the hull rather than
+        // rotating with it
+        val sp = len(e.vx, e.vy)
+        if (sp > 30f && e.kind != EK.MINE && e.kind != EK.PYLON && e.kind != EK.BOSS) {
+            val ux = e.vx / sp
+            val uy = e.vy / sp
+            val puff = (0.55f + 0.45f * sin(timeNow * 26f + e.seedPhase())) * clamp(sp / 220f, 0.35f, 1.4f)
+            Neon.softDisc(c, e.x - ux * s * 1.0f, e.y - uy * s * 1.0f, s * 0.62f * puff, fade(col, 0.20f))
+            Neon.softDisc(c, e.x - ux * s * 1.7f, e.y - uy * s * 1.7f, s * 0.34f * puff, fade(lighten(col, 0.5f), 0.16f))
+        }
+
         c.save()
         c.translate(e.x, e.y)
         c.rotate(e.angle)
@@ -388,6 +414,14 @@ object Draw {
         }
         Neon.fillPath(c, shape, fade(col, 0.24f))
         Neon.path(c, shape, col, 2.1f / s, 1f, 0.85f)
+        // a rim light along the leading edge, which is what stops the hulls
+        // reading as flat cut-outs against the backdrop
+        c.save()
+        c.translate(0f, 0.07f)
+        c.scale(0.93f, 0.93f)
+        Neon.path(c, shape, fade(lighten(col, 0.55f), 0.5f), 1.1f / s, 0f, 0.55f)
+        c.restore()
+        detail(c, e, col, s, timeNow)
         if (e.kind == EK.TURRET) {
             Neon.ring(c, 0f, 0f, 0.42f, fade(lighten(col, 0.4f), 0.9f), 1.4f / s, 0.8f)
         }
@@ -409,6 +443,111 @@ object Draw {
         if (e.kind == EK.MINE) {
             val pulse = 0.45f + 0.55f * sin(timeNow * 7f + e.seedPhase())
             Neon.ring(c, e.x, e.y, s * (1.4f + 0.25f * pulse), fade(Palette.RED, 0.4f * pulse), 1.4f, 0.8f)
+        }
+    }
+
+    /**
+     * Panel lines, intakes and a lit cockpit, drawn in the hull's own unit space
+     * so one routine covers every silhouette. Widths are divided by the scale
+     * the caller already applied. As an enemy takes damage the same routine
+     * cracks it open, so a nearly-dead hull looks nearly dead.
+     */
+    private fun detail(c: Canvas, e: Enemy, col: Int, s: Float, timeNow: Float) {
+        val line = 1.0f / s
+        val hot = lighten(col, 0.5f)
+        val dim = fade(col, 0.55f)
+        when (e.kind) {
+            EK.DRIFTER -> {
+                Neon.hairline(c, -0.42f, -0.30f, 0.42f, -0.30f, dim, line)
+                Neon.hairline(c, -0.24f, 0.40f, -0.55f, -0.16f, dim, line)
+                Neon.hairline(c, 0.24f, 0.40f, 0.55f, -0.16f, dim, line)
+            }
+            EK.WEAVER -> {
+                Neon.hairline(c, 0f, 0.72f, 0f, -0.70f, dim, line)
+                Neon.hairline(c, -0.70f, -0.15f, -0.20f, 0.18f, dim, line)
+                Neon.hairline(c, 0.70f, -0.15f, 0.20f, 0.18f, dim, line)
+            }
+            EK.CHARGER -> {
+                Neon.hairline(c, 0f, 1.05f, 0f, -0.55f, fade(hot, 0.7f), line * 1.3f)
+                Neon.hairline(c, -0.34f, -0.10f, -0.14f, 0.40f, dim, line)
+                Neon.hairline(c, 0.34f, -0.10f, 0.14f, 0.40f, dim, line)
+            }
+            EK.TURRET -> {
+                for (i in 0 until 3) {
+                    val a = i * TAU / 3f + timeNow * 0.6f
+                    Neon.hairline(c, cos(a) * 0.44f, sin(a) * 0.44f, cos(a) * 0.92f, sin(a) * 0.92f, dim, line * 1.4f)
+                }
+            }
+            EK.LANCER -> {
+                Neon.hairline(c, 0f, 1.05f, 0f, -0.20f, fade(Palette.RED, 0.8f), line * 1.6f)
+                Neon.hairline(c, -0.55f, -0.05f, -0.30f, 0.28f, dim, line)
+                Neon.hairline(c, 0.55f, -0.05f, 0.30f, 0.28f, dim, line)
+            }
+            EK.ORBITER -> {
+                Neon.ring(c, 0f, 0f, 0.40f, dim, line * 1.2f, 0.4f)
+                Neon.hairline(c, -0.55f, 0.20f, 0.55f, 0.20f, dim, line)
+            }
+            EK.SPLITTER -> {
+                // the seam it will break along
+                Neon.hairline(c, 0f, 0.90f, 0f, -0.48f, fade(hot, 0.75f), line * 1.5f)
+                Neon.hairline(c, -0.72f, 0f, 0.72f, 0f, dim, line)
+            }
+            EK.MINELAYER -> {
+                Neon.hairline(c, -0.6f, -0.42f, 0.6f, -0.42f, dim, line)
+                Neon.hairline(c, -0.28f, -0.42f, -0.28f, -0.66f, fade(Palette.RED, 0.6f), line * 1.3f)
+                Neon.hairline(c, 0.28f, -0.42f, 0.28f, -0.66f, fade(Palette.RED, 0.6f), line * 1.3f)
+            }
+            EK.SWARMER -> Neon.hairline(c, 0f, 1.0f, 0f, -0.42f, dim, line)
+            EK.SHIELDER -> {
+                Neon.hairline(c, -0.45f, 0.20f, 0.45f, 0.20f, dim, line * 1.3f)
+                Neon.hairline(c, -0.45f, -0.10f, 0.45f, -0.10f, dim, line)
+            }
+            EK.WISP -> {
+                Neon.hairline(c, -0.36f, 0.10f, 0f, 0.46f, dim, line)
+                Neon.hairline(c, 0.36f, 0.10f, 0f, 0.46f, dim, line)
+            }
+            EK.CARRIER -> {
+                Neon.hairline(c, -0.7f, -0.30f, 0.7f, -0.30f, dim, line * 1.3f)
+                Neon.hairline(c, -0.35f, 0.55f, -0.35f, -0.30f, dim, line)
+                Neon.hairline(c, 0.35f, 0.55f, 0.35f, -0.30f, dim, line)
+            }
+            EK.PYLON -> {
+                Neon.ring(c, 0f, 0f, 0.52f, dim, line * 1.2f, 0.4f)
+                Neon.ring(c, 0f, 0f, 0.30f, fade(hot, 0.6f), line, 0.4f)
+            }
+            EK.BOSS -> {
+                Neon.hairline(c, -1.0f, 0f, 1.0f, 0f, dim, line * 1.6f)
+                Neon.hairline(c, -0.42f, 0.72f, -0.42f, -0.70f, dim, line * 1.2f)
+                Neon.hairline(c, 0.42f, 0.72f, 0.42f, -0.70f, dim, line * 1.2f)
+            }
+            else -> {}
+        }
+
+        // a lit cockpit on anything that reads as a craft
+        if (e.kind != EK.MINE && e.kind != EK.PYLON && e.kind != EK.TURRET) {
+            val glow = 0.6f + 0.4f * sin(timeNow * 4f + e.seedPhase())
+            Neon.orb(c, 0f, 0.34f, 0.13f, fade(lighten(col, 0.75f), 0.85f * glow), 0.8f)
+        }
+
+        // battle damage: cracks that widen as the hull gives out
+        val frac = if (e.maxHp > 0f) clamp(e.hp / e.maxHp, 0f, 1f) else 1f
+        if (frac < 0.62f && e.kind != EK.MINE) {
+            val hurt = 1f - frac / 0.62f
+            val n = 1 + (hurt * 2.4f).toInt()
+            for (i in 0 until n) {
+                val a = e.seedPhase() * 3.1f + i * 2.4f
+                val r0 = 0.18f + 0.1f * i
+                val r1 = 0.55f + 0.30f * hurt
+                Neon.hairline(
+                    c, cos(a) * r0, sin(a) * r0, cos(a + 0.5f) * r1, sin(a + 0.5f) * r1,
+                    fade(Palette.RED, 0.35f + 0.45f * hurt), line * 1.4f
+                )
+            }
+            if (frac < 0.3f) {
+                val flick = 0.4f + 0.6f * sin(timeNow * 17f + e.seedPhase() * 5f)
+                Neon.orb(c, cos(e.seedPhase()) * 0.35f, sin(e.seedPhase()) * 0.35f, 0.10f,
+                    fade(0xFFFFA040.toInt(), 0.8f * flick), 1f)
+            }
         }
     }
 

@@ -302,7 +302,9 @@ object EnemyAI {
             e.fireT = e.fireEvery
             e.stateT = 0.45f            // blink shortly after firing
         }
-        if (e.stateT > 0f) {
+        // the blink clamps back to the top of the screen, which would undo the
+        // withdrawal that stops a wave stalling, so a retiring wisp stops
+        if (e.stateT > 0f && !w.retiring(e)) {
             e.stateT -= dt
             if (e.stateT <= 0f) {
                 w.fx.burst(e.x, e.y, 14, e.color, 220f, 2.2f, 0.4f, true)

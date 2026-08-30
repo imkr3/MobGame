@@ -238,6 +238,9 @@ class Synth(private val rate: Int = 22050) {
     private val pending = ArrayDeque<Int>()
     private var shootCooldown = 0
 
+    /** How many arrangements exist: the menu plus one per sector. */
+    val trackCount: Int get() = songs.size
+
     fun setTrack(index: Int) {
         val i = index.coerceIn(0, songs.size - 1)
         if (i != songIndex) {
