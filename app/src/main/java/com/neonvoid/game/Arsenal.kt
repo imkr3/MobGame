@@ -39,6 +39,10 @@ class Vortex {
     var banks = false
     var implodes = false
     var damage = 0f
+    /** EVENT HORIZON: re-forms left before the singularity finally goes. */
+    var reforms = 0
+    /** COLLAPSE: whether the detonation leaves burning ground. */
+    var scars = false
 }
 
 /** A heavy shot that ricochets around the arena instead of leaving it. */
@@ -54,6 +58,10 @@ class Orb {
     var blast = 0f
     var color = Palette.LIME
     var spin = 0f
+    /** FISSION: splits left before the orb stops dividing. */
+    var splits = 0
+    /** CRATER: whether a blast leaves burning ground behind. */
+    var crater = false
 }
 
 /** A burning patch left where something died. */
@@ -65,6 +73,10 @@ class Pool {
     var dps = 10f
     var banks = false
     var color = Palette.LIME
+    /** GREEN ROT: units per second the pool widens as it burns. */
+    var creep = 0f
+    /** BLIGHT: burn damage per second the pool leaves on what wades through. */
+    var ignites = 0f
 }
 
 /** A wall of force rolling up the screen. */
@@ -87,6 +99,8 @@ class Turret {
     var every = 0.5f
     var damage = 4
     var mortar = false
+    /** BOMBARDMENT: whether its shells land with the wider blast. */
+    var heavy = false
 }
 
 class Bolt {
@@ -112,17 +126,21 @@ class Arsenal(private val fx: Fx) {
     private val beams = Array(8) { Beam() }
     private val novas = Array(6) { Nova() }
     private val bolts = Array(10) { Bolt() }
-    private val nodeCd = FloatArray(6)
+    private val nodeCd = FloatArray(8)
     private val vortices = Array(4) { Vortex() }
     private val turrets = Array(4) { Turret() }
     private val orbs = Array(6) { Orb() }
     private val pools = Array(7) { Pool() }
-    private val quakes = Array(3) { Quake() }
+    private val quakes = Array(5) { Quake() }
 
     private var lanceT = 0f
     private var swarmT = 0f
     private var arcT = 0f
     private var pulseT = 0f
+    /** RESONANCE's pending second ring. */
+    private var echoT = 0f
+    private var echoR = 0f
+    private var echoDmg = 0f
     private var sentryT = 0f
     private var flakT = 0f
     private var wingT = 0f
@@ -136,6 +154,8 @@ class Arsenal(private val fx: Fx) {
         private set
     private var phantomT = 0f
     private var tetherIdx = -1
+    /** SPLIT BEAM's second target, or -1. */
+    private var tetherIdx2 = -1
     private var tetherTick = 0f
     var orbitAngle = 0f
         private set
@@ -146,7 +166,8 @@ class Arsenal(private val fx: Fx) {
         for (b in bolts) b.active = false
         nodeCd.fill(0f)
         lanceT = 2.5f; swarmT = 1.2f; arcT = 1.4f; pulseT = 4f; sentryT = 0.9f
-        flakT = 1.6f; wingT = 0.5f; tetherIdx = -1; tetherTick = 0f; phantomT = 0f
+        echoT = 0f
+        flakT = 1.6f; wingT = 0.5f; tetherIdx = -1; tetherIdx2 = -1; tetherTick = 0f; phantomT = 0f
         vortexT = 3f; sentinelT = 2.5f; ricochetT = 1.4f
         mirrorT = 0.4f; quakeT = 3.2f
         for (p in pools) p.active = false
@@ -197,7 +218,7 @@ class Arsenal(private val fx: Fx) {
         if (lo.has(Aug.ARC)) tickArc(dt, world)
         if (lo.has(Aug.PULSE)) tickPulse(dt, world)
         if (lo.has(Aug.FLAK)) tickFlak(dt, world)
-        if (lo.has(Aug.TETHER)) tickTether(dt, world) else tetherIdx = -1
+        if (lo.has(Aug.TETHER)) tickTether(dt, world) else { tetherIdx = -1; tetherIdx2 = -1 }
         if (lo.has(Aug.WING)) tickWing(dt, world)
         if (lo.has(Aug.VORTEX)) tickVortex(dt, world)
         if (lo.has(Aug.SENTINEL)) tickSentinel(dt, world)
@@ -243,7 +264,14 @@ class Arsenal(private val fx: Fx) {
             else -> 6f + 2f * l
         } + lo.damageBonus()
         p.color = if (br == Aug.B) Palette.AMBER else Palette.LIME
+        // GREEN ROT: a mastered BLOOM keeps creeping while it feeds
+        p.creep = if (br == Aug.B && lo.mastered(Aug.HARVEST)) 26f else 0f
+        // BLIGHT: a mastered PYRE sets whatever wades through it alight, so
+        // the damage follows the enemy out of the pool
+        p.ignites = if (br == Aug.A && lo.mastered(Aug.HARVEST)) p.dps * 0.5f else 0f
     }
+
+
 
     private fun updatePools(dt: Float, world: World) {
         for (p in pools) {
@@ -254,7 +282,12 @@ class Arsenal(private val fx: Fx) {
                 if (!e.active) continue
                 if (len(e.x - p.x, e.y - p.y) > p.r + e.r) continue
                 world.hit(e, p.dps * dt, e.x, e.y, false)
+                if (p.ignites > 0f) {
+                    e.burn = maxOf(e.burn, 2.4f)
+                    e.burnDps = maxOf(e.burnDps, p.ignites)
+                }
             }
+            if (p.creep > 0f) p.r += p.creep * dt
             if (p.banks) world.magnetiseWithin(p.x, p.y, p.r * 1.6f, dt)
             if (chance(dt * 12f)) {
                 val a = rnd(TAU)
@@ -273,7 +306,12 @@ class Arsenal(private val fx: Fx) {
         return clamp(base + (if (index == 0) 0f else 34f), 16f, world.w - 16f)
     }
 
-    fun mirrorCount(lo: Loadout): Int = if (lo.branch[Aug.MIRROR] == Aug.A) 2 else 1
+    fun mirrorCount(lo: Loadout): Int = when {
+        lo.branch[Aug.MIRROR] == Aug.A -> 2
+        // DOPPELGANGER: a mastered PHANTOM brings a second ghost up
+        lo.mastered(Aug.MIRROR) -> 2
+        else -> 1
+    }
 
     private fun tickMirror(dt: Float, world: World) {
         val lo = slot.loadout
@@ -290,14 +328,18 @@ class Arsenal(private val fx: Fx) {
             val b = world.allyBullet(mx, p.y - 12f, 0f, -880f, 4.2f, 3 + l + bonus, Palette.WHITE, 1)
             if (br == Aug.B) b.pierce = 1
         }
-        mirrorT = cd(world, clamp(0.42f - 0.03f * l, 0.24f, 0.42f))
+        // PARADOX: a mastered TWIN fires on half the interval
+        val rate = if (lo.mastered(Aug.MIRROR) && br == Aug.A) 0.5f else 1f
+        mirrorT = cd(world, clamp(0.42f - 0.03f * l, 0.24f, 0.42f) * rate)
     }
 
     /** PHANTOM: the ghost eats one shot meant for you, on a cooldown. */
     fun mirrorGuard(world: World): Boolean {
         val lo = slot.loadout
         if (lo.branch[Aug.MIRROR] != Aug.B || phantomT > 0f) return false
-        phantomT = cd(world, 7f - 0.6f * lo.lvl[Aug.MIRROR])
+        // DOPPELGANGER: two ghosts means the guard comes round twice as fast
+        val gap = (7f - 0.6f * lo.lvl[Aug.MIRROR]) * (if (lo.mastered(Aug.MIRROR)) 0.5f else 1f)
+        phantomT = cd(world, gap)
         return true
     }
 
@@ -323,7 +365,8 @@ class Arsenal(private val fx: Fx) {
             }
             q.thickness = when (br) {
                 Aug.A -> 16f
-                Aug.B -> 40f + 3f * l
+                // AFTERSHOCK WALL: mastered, the slow wall grinds twice as wide
+                Aug.B -> (40f + 3f * l) * (if (lo.mastered(Aug.QUAKE)) 2f else 1f)
                 else -> 18f + 2f * l
             }
             q.damage = when (br) {
@@ -333,6 +376,19 @@ class Arsenal(private val fx: Fx) {
             } + lo.damageBonus()
             q.life = 4f
             q.hit.fill(false)
+        }
+        // EPICENTRE: a mastered FAULT also throws one back down the screen
+        if (br == Aug.A && lo.mastered(Aug.QUAKE)) {
+            val down = quakes.firstOrNull { !it.active }
+            if (down != null) {
+                down.active = true
+                down.y = p.y - 30f
+                down.speed = -420f
+                down.thickness = 16f
+                down.damage = 8f + 2.5f * l + lo.damageBonus()
+                down.life = 4f
+                down.hit.fill(false)
+            }
         }
         world.fx.shake(0.2f)
         world.sound?.sfx(Sfx.PICKUP)
@@ -344,7 +400,11 @@ class Arsenal(private val fx: Fx) {
             if (!q.active) continue
             q.y -= q.speed * dt
             q.life -= dt
-            if (q.y < -q.thickness || q.life <= 0f) { q.active = false; continue }
+            // EPICENTRE's wall runs the other way, so both ends bound it
+            if (q.y < -q.thickness || q.y > world.h + q.thickness || q.life <= 0f) {
+                q.active = false
+                continue
+            }
             for (i in world.enemies.indices) {
                 val e = world.enemies[i]
                 if (!e.active || q.hit[i]) continue
@@ -380,7 +440,20 @@ class Arsenal(private val fx: Fx) {
         }
         chronoR = r
         val reflect = 0.85f - 0.06f * l
-        val payload = 6 + 4 * l
+        val mastered = lo.mastered(Aug.CHRONO)
+        // RECOIL: what comes back comes back twice as hard
+        val payload = (6 + 4 * l) * (if (mastered && br == Aug.B) 2 else 1)
+        // DILATION: a mastered STASIS drags the enemies themselves, not only
+        // their fire. The AI runs each enemy on its own slowed clock, so this
+        // holds movement and firing back together. Bosses keep their own time.
+        if (mastered && br == Aug.A) {
+            for (e in world.enemies) {
+                if (!e.active || e.kind == EK.BOSS) continue
+                if (len(e.x - p.x, e.y - p.y) > r + e.r) continue
+                e.slow = 0.62f
+                e.dilated = 0.12f
+            }
+        }
         for (b in world.bullets) {
             if (!b.active || !b.hostile) continue
             if (len(b.x - p.x, b.y - p.y) > r + b.r) {
@@ -460,8 +533,26 @@ class Arsenal(private val fx: Fx) {
             o.explodes = br == Aug.B
             o.blast = if (br == Aug.B) 78f + 6f * l else 0f
             o.color = if (br == Aug.B) Palette.AMBER else Palette.LIME
+            // FISSION: a mastered CAROM orb has one split left in it
+            o.splits = if (br == Aug.A && lo.mastered(Aug.RICOCHET)) 1 else 0
+            o.crater = br == Aug.B && lo.mastered(Aug.RICOCHET)
         }
         ricochetT = cd(world, if (br == Aug.A) 3.6f else 4.4f - 0.2f * l)
+    }
+
+    /** CRATER: a mastered DEMOLISHER blast leaves the ground burning. */
+    private fun crater(x: Float, y: Float, r: Float, damage: Float) {
+        val c = pools.firstOrNull { !it.active } ?: pools.minByOrNull { it.life } ?: return
+        c.active = true
+        c.x = x; c.y = y
+        c.r = r * 0.8f
+        c.maxLife = 2.4f
+        c.life = c.maxLife
+        c.dps = damage * 0.45f
+        c.banks = false
+        c.creep = 0f
+        c.ignites = 0f
+        c.color = Palette.AMBER
     }
 
     private fun updateOrbs(dt: Float, world: World) {
@@ -488,6 +579,7 @@ class Arsenal(private val fx: Fx) {
                     fx.shockwave(o.x, o.y, o.blast, o.color, 0.4f, 3f)
                     fx.shake(0.14f)
                     world.splashDamage(o.x, o.y, o.blast, o.damage * 0.7f)
+                    if (o.crater) crater(o.x, o.y, o.blast, o.damage)
                 }
             }
             if (o.hitCd > 0f) continue
@@ -495,8 +587,33 @@ class Arsenal(private val fx: Fx) {
                 if (!e.active) continue
                 val rr = e.r + o.r
                 if (len(e.x - o.x, e.y - o.y) > rr) continue
+                val wasAlive = e.hp
                 world.hit(e, o.damage, o.x, o.y, true)
                 o.hitCd = 0.14f
+                // FISSION: the kill that spends the split throws off a twin
+                if (o.splits > 0 && wasAlive > 0f && !e.active) {
+                    o.splits--
+                    val twin = orbs.firstOrNull { !it.active }
+                    if (twin != null) {
+                        twin.active = true
+                        twin.x = o.x; twin.y = o.y
+                        val ta = rnd(TAU)
+                        val ts = len(o.vx, o.vy)
+                        twin.vx = cos(ta) * ts
+                        twin.vy = sin(ta) * ts
+                        twin.r = o.r * 0.8f
+                        twin.damage = o.damage * 0.7f
+                        twin.maxLife = o.life
+                        twin.life = o.life
+                        twin.color = o.color
+                        twin.explodes = false
+                        twin.blast = 0f
+                        twin.hitCd = 0f
+                        twin.spin = 0f
+                        twin.splits = 0
+                        fx.burst(o.x, o.y, 8, o.color, 240f, 2.2f, 0.4f)
+                    }
+                }
                 // bounce off what it just mauled, so it keeps working the field
                 val a = atan2(o.y - e.y, o.x - e.x)
                 val sp = len(o.vx, o.vy)
@@ -505,6 +622,7 @@ class Arsenal(private val fx: Fx) {
                 if (o.explodes) {
                     fx.shockwave(o.x, o.y, o.blast, o.color, 0.4f, 3f)
                     world.splashDamage(o.x, o.y, o.blast, o.damage * 0.7f)
+                    if (o.crater) crater(o.x, o.y, o.blast, o.damage)
                 }
                 break
             }
@@ -531,12 +649,16 @@ class Arsenal(private val fx: Fx) {
                 vortexT = cd(world, clamp(4.8f - 0.25f * (l - 3), 3.8f, 4.8f))
                 v.r = 136f + 10f * (l - 3); v.dps = 30f + 9f * (l - 3)
                 v.maxLife = 4.2f; v.pull = 300f; v.banks = true
+                // EVENT HORIZON: it falls in on itself once before it goes
+                v.reforms = if (lo.mastered(Aug.VORTEX)) 1 else 0
             }
             Aug.B -> {                                   // IMPLOSION
                 vortexT = cd(world, clamp(4.4f - 0.25f * (l - 3), 3.4f, 4.4f))
                 v.r = 138f; v.dps = 26f
                 v.maxLife = 2.2f; v.pull = 380f; v.implodes = true
                 v.damage = 155f + 44f * (l - 3)
+                // COLLAPSE: the detonation leaves burning ground behind
+                v.scars = lo.mastered(Aug.VORTEX)
             }
             else -> {
                 vortexT = cd(world, 5.2f - 0.4f * l)
@@ -563,6 +685,19 @@ class Arsenal(private val fx: Fx) {
                     fx.burst(v.x, v.y, 32, Palette.VIOLET, 380f, 3f, 0.7f, true)
                     fx.shake(0.3f)
                     world.sound?.sfx(Sfx.EXPLODE)
+                    // COLLAPSE: the crater keeps burning after the flash
+                    if (v.scars) crater(v.x, v.y, v.r * 1.1f, v.damage * 0.22f)
+                }
+                // EVENT HORIZON: it falls in on itself and pulls once more
+                if (v.reforms > 0) {
+                    v.reforms--
+                    v.r *= 0.7f
+                    v.dps *= 1.5f
+                    v.pull *= 1.5f
+                    v.maxLife *= 0.55f
+                    v.life = v.maxLife
+                    fx.shockwave(v.x, v.y, v.r * 1.4f, Palette.WHITE, 0.4f, 3f)
+                    continue
                 }
                 v.active = false
                 continue
@@ -600,8 +735,10 @@ class Arsenal(private val fx: Fx) {
             t.x = clamp(p.x + (i - (count - 1) * 0.5f) * 54f, 30f, world.w - 30f)
             t.y = p.y + 10f
             t.mortar = br == Aug.B
+            // EMPLACEMENT: a mastered BATTERY digs in for far longer
+            val dug = if (lo.mastered(Aug.SENTINEL)) 2.1f else 1f
             t.maxLife = when (br) {
-                Aug.A -> 6.5f + 0.4f * (l - 3)
+                Aug.A -> (6.5f + 0.4f * (l - 3)) * dug
                 Aug.B -> 7.5f + 0.4f * (l - 3)
                 else -> 5f + 0.6f * l
             }
@@ -616,6 +753,8 @@ class Arsenal(private val fx: Fx) {
                 Aug.B -> 6 + l + bonus
                 else -> 4 + 2 * l + bonus
             }
+            // BOMBARDMENT: a mastered MORTAR lands with a far wider blast
+            t.heavy = br == Aug.B && lo.mastered(Aug.SENTINEL)
             t.fireT = 0.2f
             fx.shockwave(t.x, t.y, 40f, Palette.SKY, 0.35f, 2.5f)
         }
@@ -635,7 +774,9 @@ class Arsenal(private val fx: Fx) {
             if (t.fireT <= 0f) {
                 t.fireT = t.every
                 if (t.mortar) {
-                    world.flakShell(t.x, t.y - 8f, rnd(-50f, 50f), -500f, 6f, t.damage, 7, 0.55f, 0f)
+                    val frags = if (t.heavy) 13 else 7
+                    val blast = if (t.heavy) 90f else 0f
+                    world.flakShell(t.x, t.y - 8f, rnd(-50f, 50f), -500f, 6f, t.damage, frags, 0.55f, blast)
                 } else {
                     world.allyBullet(t.x, t.y - 8f, 0f, -840f, 3.4f, t.damage, Palette.SKY, 1)
                 }
@@ -661,12 +802,23 @@ class Arsenal(private val fx: Fx) {
             Aug.A -> { // CLUSTER
                 flakT = cd(world, clamp(2.0f - 0.1f * (l - 3), 1.5f, 2.0f))
                 for (i in -1..1) {
-                    world.flakShell(p.x + i * 13f, p.y - 12f, i * 105f, -560f, 5.5f, 3 + bonus, 7, 0.5f, 0f)
+                    val sh = world.flakShell(p.x + i * 13f, p.y - 12f, i * 105f, -560f, 5.5f, 3 + bonus, 7, 0.5f, 0f)
+                    // DOUBLE FUSE: the fragments carry one more burst
+                    if (lo.mastered(Aug.FLAK)) sh.reburst = 1
                 }
             }
             Aug.B -> { // AIRBURST
                 flakT = cd(world, clamp(2.7f - 0.1f * (l - 3), 2.1f, 2.7f))
-                world.flakShell(p.x, p.y - 12f, rnd(-30f, 30f), -520f, 9f, 6 + bonus, 18, 0.62f, 115f)
+                // CARPET: two shells, thrown apart, both bursting wider
+                val shells = if (lo.mastered(Aug.FLAK)) 2 else 1
+                val wide = if (lo.mastered(Aug.FLAK)) 1.35f else 1f
+                for (i in 0 until shells) {
+                    val off = (i - (shells - 1) * 0.5f) * 120f
+                    world.flakShell(
+                        p.x + off * 0.18f, p.y - 12f, off + rnd(-30f, 30f), -520f, 9f,
+                        6 + bonus, 18, 0.62f, 115f * wide
+                    )
+                }
             }
             else -> {
                 flakT = cd(world, 2.7f - 0.25f * l)
@@ -683,7 +835,7 @@ class Arsenal(private val fx: Fx) {
         val l = lo.lvl[Aug.TETHER]
         val br = lo.branch[Aug.TETHER]
         val p = slot.player
-        if (!p.alive) { tetherIdx = -1; return }
+        if (!p.alive) { tetherIdx = -1; tetherIdx2 = -1; return }
         val range = 230f + 22f * l
 
         val cur = tetherIdx
@@ -701,7 +853,7 @@ class Arsenal(private val fx: Fx) {
             tetherIdx = best
         }
         val idx = tetherIdx
-        if (idx < 0) return
+        if (idx < 0) { tetherIdx2 = -1; return }
         val e = world.enemies[idx]
 
         val dps = when (br) {
@@ -710,6 +862,24 @@ class Arsenal(private val fx: Fx) {
             else -> 26f + 13f * l
         }
         world.hit(e, dps * dt, e.x, e.y, false)
+        // SPLIT BEAM: mastered LEECH cuts a second target alongside the first
+        tetherIdx2 = -1
+        if (br == Aug.A && lo.mastered(Aug.TETHER)) {
+            var second = -1
+            var bestD = range
+            for (i in world.enemies.indices) {
+                if (i == idx) continue
+                val o = world.enemies[i]
+                if (!o.active) continue
+                val d = len(o.x - p.x, o.y - p.y)
+                if (d < bestD) { bestD = d; second = i }
+            }
+            if (second >= 0) {
+                tetherIdx2 = second
+                val o = world.enemies[second]
+                world.hit(o, dps * 0.7f * dt, o.x, o.y, false)
+            }
+        }
         tetherTick -= dt
         if (tetherTick <= 0f) {
             tetherTick = 0.1f
@@ -718,16 +888,23 @@ class Arsenal(private val fx: Fx) {
         when (br) {
             Aug.A -> p.overdrive = clamp(p.overdrive + 0.014f * dt * l, 0f, 1f)   // LEECH
             Aug.B -> {                                                            // SIPHON drags it in
+                // UNDERTOW: mastered, it hauls far harder and keeps cutting
+                val pull = if (lo.mastered(Aug.TETHER)) 104f else 46f
                 val a = Draw.aimAngle(e.x, e.y, p.x, p.y)
-                e.x += cos(a) * 46f * dt
-                e.y += sin(a) * 46f * dt
+                e.x += cos(a) * pull * dt
+                e.y += sin(a) * pull * dt
+                if (lo.mastered(Aug.TETHER)) world.hit(e, dps * 0.45f * dt, e.x, e.y, false)
             }
         }
     }
 
     // ---------------------------------------------------------------- WING
 
-    private fun wingCount(lo: Loadout): Int = if (lo.lvl[Aug.WING] >= 5) 3 else 2
+    private fun wingCount(lo: Loadout): Int = when {
+        lo.mastered(Aug.WING) && lo.branch[Aug.WING] == Aug.A -> 4   // SQUADRON
+        lo.lvl[Aug.WING] >= 5 -> 3
+        else -> 2
+    }
 
     private fun wingOffset(lo: Loadout, i: Int): Float {
         val spread = 30f + 5f * lo.lvl[Aug.WING]
@@ -751,13 +928,21 @@ class Arsenal(private val fx: Fx) {
         }
         wingT -= dt
         if (wingT > 0f) return
-        wingT = cd(world, if (br == Aug.B) clamp(2.8f - 0.1f * (l - 3), 2.4f, 2.8f) else clamp(0.7f - 0.045f * l, 0.42f, 0.7f))
+        wingT = cd(
+            world,
+            if (br == Aug.B) clamp(2.8f - 0.1f * (l - 3), 2.4f, 2.8f) * (if (lo.mastered(Aug.WING)) 1.45f else 1f)
+            else clamp(0.7f - 0.045f * l, 0.42f, 0.7f)
+        )
         for (i in 0 until n) {
             val wx = p.x + wingOffset(lo, i)
             val wy = p.y + 6f
             if (br == Aug.B) {
-                val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 2 + l + bonus, Palette.WHITE)
-                m.turn = 4.5f
+                // BARRAGE: each wing throws a pair once the line is mastered
+                val salvo = if (lo.mastered(Aug.WING)) 2 else 1
+                for (k in 0 until salvo) {
+                    val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 2 + l + bonus, Palette.WHITE)
+                    m.turn = 4.5f
+                }
             } else {
                 world.allyBullet(wx, wy, 0f, -880f, 3.4f, 2 + l + bonus, Palette.WHITE, 1)
             }
@@ -812,14 +997,18 @@ class Arsenal(private val fx: Fx) {
             Aug.A -> { // PRISM: three fanning beams
                 lanceT = cd(world, clamp(2.3f - 0.15f * (l - 3), 1.6f, 2.3f))
                 val dps = 34f + 12f * l
-                beam(p.x, 7f, dps, 0.4f, Palette.CYAN, 0f)
-                beam(p.x - 26f, 6f, dps * 0.8f, 0.4f, Palette.VIOLET, -150f)
-                beam(p.x + 26f, 6f, dps * 0.8f, 0.4f, Palette.VIOLET, 150f)
+                // AFTERGLOW: mastered, the lane keeps burning after the beam goes
+                val life = if (lo.mastered(Aug.LANCE)) 1.1f else 0.4f
+                beam(p.x, 7f, dps, life, Palette.CYAN, 0f)
+                beam(p.x - 26f, 6f, dps * 0.8f, life, Palette.VIOLET, -150f)
+                beam(p.x + 26f, 6f, dps * 0.8f, life, Palette.VIOLET, 150f)
                 fx.shake(0.1f)
             }
             Aug.B -> { // SIEGE: one ruinous column
                 lanceT = cd(world, clamp(3.1f - 0.2f * (l - 3), 2.4f, 3.1f))
-                beam(p.x, 30f, 165f + 38f * (l - 3), 0.55f, Palette.WHITE, 0f)
+                // MELTDOWN: the column holds for far longer
+                val life = if (lo.mastered(Aug.LANCE)) 1.25f else 0.55f
+                beam(p.x, 30f, 165f + 38f * (l - 3), life, Palette.WHITE, 0f)
                 fx.shake(0.42f)
                 fx.flash(Palette.VIOLET, 0.22f)
                 world.sound?.sfx(Sfx.LASER)
@@ -851,13 +1040,22 @@ class Arsenal(private val fx: Fx) {
                 for (i in 0 until 3) {
                     val m = world.missile(p.x, p.y - 8f, rnd(-260f, 260f), rnd(-380f, -180f), 3.4f, 3 + bonus, Palette.LIME)
                     m.turn = 7.5f
+                    // SWARM LOGIC: a seeker that kills hands its place to a new one
+                    if (lo.mastered(Aug.SWARM)) m.reseed = 1
                 }
             }
             Aug.B -> { // WARHEAD
                 swarmT = cd(world, clamp(3.0f - 0.12f * (l - 3), 2.5f, 3.0f))
-                val m = world.missile(p.x, p.y - 12f, rnd(-40f, 40f), -230f, 7f, 8 + bonus, Palette.AMBER)
-                m.turn = 2.6f
-                m.splash = 38f
+                // SALVO: mastered, it launches a pair
+                val n = if (lo.mastered(Aug.SWARM)) 2 else 1
+                for (i in 0 until n) {
+                    val m = world.missile(
+                        p.x + (i - (n - 1) * 0.5f) * 22f, p.y - 12f,
+                        rnd(-40f, 40f), -230f, 7f, 8 + bonus, Palette.AMBER
+                    )
+                    m.turn = 2.6f
+                    m.splash = 38f
+                }
             }
             else -> {
                 swarmT = cd(world, 2.3f - 0.18f * l)
@@ -876,11 +1074,13 @@ class Arsenal(private val fx: Fx) {
     fun nodeCount(lo: Loadout): Int {
         if (!lo.has(Aug.ORBIT)) return 0
         val l = lo.lvl[Aug.ORBIT]
+        // HALO adds a seventh node; the pool is sized for it
+        val cap = if (lo.mastered(Aug.ORBIT) && lo.branch[Aug.ORBIT] == Aug.A) 7 else 6
         return when (lo.branch[Aug.ORBIT]) {
-            Aug.A -> 4 + (l - 3).coerceAtLeast(0)
+            Aug.A -> 4 + (l - 3).coerceAtLeast(0) + (if (lo.mastered(Aug.ORBIT)) 1 else 0)
             Aug.B -> 3 + (l - 3).coerceAtLeast(0) / 2
             else -> l
-        }.coerceAtMost(6)
+        }.coerceAtMost(cap)
     }
 
     fun nodeOrbit(lo: Loadout): Float {
@@ -911,6 +1111,7 @@ class Arsenal(private val fx: Fx) {
             else -> 17f + 6f * lo.lvl[Aug.ORBIT]
         }
 
+        val mastered = lo.mastered(Aug.ORBIT)
         if (sentry) {
             sentryT -= dt
             if (sentryT <= 0f) {
@@ -919,7 +1120,17 @@ class Arsenal(private val fx: Fx) {
                     val a = orbitAngle + i * TAU / count
                     val nx = p.x + cos(a) * orbit
                     val ny = p.y + sin(a) * orbit
-                    world.allyBullet(nx, ny, 0f, -780f, 3.6f, 4 + lo.damageBonus(), Palette.AMBER, 1)
+                    // BROADSIDE: every node fires a spread rather than a bolt
+                    if (mastered) {
+                        for (k in -1..1) {
+                            world.allyBullet(
+                                nx, ny, k * 150f, -760f, 3.4f,
+                                4 + lo.damageBonus(), Palette.AMBER, 1
+                            )
+                        }
+                    } else {
+                        world.allyBullet(nx, ny, 0f, -780f, 3.6f, 4 + lo.damageBonus(), Palette.AMBER, 1)
+                    }
                 }
             }
         }
@@ -936,7 +1147,7 @@ class Arsenal(private val fx: Fx) {
                     val rr = e.r + nodeR
                     if (len(e.x - nx, e.y - ny) <= rr) {
                         world.hit(e, dmg, nx, ny, true)
-                        nodeCd[i] = 0.20f
+                        nodeCd[i] = if (mastered) 0.09f else 0.20f
                         fx.burst(nx, ny, 5, Palette.AMBER, 180f, 2f, 0.3f)
                         break
                     }
@@ -957,7 +1168,9 @@ class Arsenal(private val fx: Fx) {
         val p = slot.player
 
         if (b == Aug.B) { // RAILGUN: a line straight up the lane
-            arcT = cd(world, clamp(1.8f - 0.15f * (l - 3), 1.3f, 1.8f))
+            // OVERVOLT: mastered, the capacitor recharges in half the time
+            val rate = if (lo.mastered(Aug.ARC)) 0.5f else 1f
+            arcT = cd(world, clamp(1.8f - 0.15f * (l - 3), 1.3f, 1.8f) * rate)
             val dmg = 58f + 20f * (l - 3)
             val bolt = obtainBolt() ?: return
             bolt.active = true
@@ -1020,6 +1233,23 @@ class Arsenal(private val fx: Fx) {
             bolt.n++
             world.hit(e, dmg, e.x, e.y, true)
             fx.burst(e.x, e.y, 5, bolt.color, 180f, 2f, 0.3f)
+            // SUPERCONDUCTOR: every link forks a short second bolt into a
+            // neighbour the chain itself will not reach
+            if (lo.mastered(Aug.ARC)) {
+                var fork = -1
+                var forkD = 150f
+                for (j in world.enemies.indices) {
+                    val o = world.enemies[j]
+                    if (!o.active || used[j]) continue
+                    val d = len(o.x - e.x, o.y - e.y)
+                    if (d < forkD) { forkD = d; fork = j }
+                }
+                if (fork >= 0) {
+                    val o = world.enemies[fork]
+                    world.hit(o, dmg * 0.6f, o.x, o.y, false)
+                    fx.burst(o.x, o.y, 3, bolt.color, 140f, 1.6f, 0.24f)
+                }
+            }
             fromX = e.x; fromY = e.y
             chained++
         }
@@ -1045,17 +1275,39 @@ class Arsenal(private val fx: Fx) {
             pulseT -= dt
             if (pulseT <= 0f) {
                 pulseT = 0.25f
+                val mastered = lo.mastered(Aug.PULSE)
                 for (e in world.enemies) {
                     if (!e.active) continue
                     if (len(e.x - p.x, e.y - p.y) <= r + e.r) {
-                        world.hit(e, 2.2f + 0.7f * l, e.x, e.y, chance(0.4f))
+                        world.hit(e, (2.2f + 0.7f * l) * (if (mastered) 2f else 1f), e.x, e.y, chance(0.4f))
                     }
                 }
+                // BULWARK FIELD: the wall stops merely pushing and sends it home
+                if (mastered) world.reflectBulletsWithin(p.x, p.y, r)
             }
             return
         }
 
         pulseT -= dt
+        // RESONANCE: a mastered NOVA is followed by a wider second ring
+        if (echoT > 0f) {
+            echoT -= dt
+            if (echoT <= 0f) {
+                val e = obtainNova()
+                if (e != null) {
+                    e.active = true
+                    e.x = p.x; e.y = p.y; e.r = 0f
+                    e.hit.fill(false)
+                    e.maxR = echoR
+                    e.damage = echoDmg
+                    e.maxLife = 0.8f
+                    e.life = 0.8f
+                    e.color = Palette.WHITE
+                    e.banksBullets = true
+                    fx.shake(0.3f)
+                }
+            }
+        }
         if (pulseT > 0f) return
         val n = obtainNova() ?: return
         n.active = true
@@ -1069,6 +1321,11 @@ class Arsenal(private val fx: Fx) {
             n.maxLife = 0.75f
             n.color = Palette.AMBER
             n.banksBullets = true
+            if (lo.mastered(Aug.PULSE)) {
+                echoT = 0.42f
+                echoR = n.maxR * 1.35f
+                echoDmg = n.damage * 0.8f
+            }
             fx.shake(0.4f)
             fx.flash(Palette.AMBER, 0.25f)
             world.haptic().medium()
@@ -1219,23 +1476,27 @@ class Arsenal(private val fx: Fx) {
             Neon.orb(c, t.x, t.y, 3.6f, fade(Palette.WHITE, 0.8f * k), 0.8f)
         }
 
-        // tether beam
-        val ti = tetherIdx
-        if (lo.has(Aug.TETHER) && ti >= 0 && world.enemies[ti].active && p.alive) {
-            val e = world.enemies[ti]
+        // tether beam - two of them once SPLIT BEAM is up
+        if (lo.has(Aug.TETHER) && p.alive) {
             val col = if (lo.branch[Aug.TETHER] == Aug.B) Palette.RED else Palette.ROSE
-            val n = 6
-            var px = p.x
-            var py = p.y - 10f
-            for (i in 1..n) {
-                val f = i / n.toFloat()
-                val jitter = if (i == n) 0f else rnd(-7f, 7f)
-                val nx = lerp(p.x, e.x, f) + jitter
-                val ny = lerp(p.y - 10f, e.y, f) + rnd(-5f, 5f)
-                Neon.line(c, px, py, nx, ny, fade(col, 0.85f), 2.4f, 1.1f)
-                px = nx; py = ny
+            for (pass in 0..1) {
+                val ti = if (pass == 0) tetherIdx else tetherIdx2
+                if (ti < 0 || !world.enemies[ti].active) continue
+                val e = world.enemies[ti]
+                val a = if (pass == 0) 0.85f else 0.6f
+                val n = 6
+                var px = p.x
+                var py = p.y - 10f
+                for (i in 1..n) {
+                    val f = i / n.toFloat()
+                    val jitter = if (i == n) 0f else rnd(-7f, 7f)
+                    val nx = lerp(p.x, e.x, f) + jitter
+                    val ny = lerp(p.y - 10f, e.y, f) + rnd(-5f, 5f)
+                    Neon.line(c, px, py, nx, ny, fade(col, a), 2.4f, 1.1f)
+                    px = nx; py = ny
+                }
+                Neon.ring(c, e.x, e.y, e.r * 1.25f, fade(col, a * 0.7f), 1.8f, 0.9f)
             }
-            Neon.ring(c, e.x, e.y, e.r * 1.25f, fade(col, 0.6f), 1.8f, 0.9f)
         }
 
         // wingmen

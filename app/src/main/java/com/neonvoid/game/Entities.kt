@@ -62,13 +62,16 @@ class Bullet {
     var homing = false
     var turn = 0f            // radians per second
     var target = -1
+    var reseed = 0           // SWARM LOGIC: seekers a killing missile may still spawn
     var splash = 0f          // blast radius on impact
     var fuse = 0f            // seconds until it bursts on its own
     var shrapnel = 0         // fragments produced when it bursts
+    var reburst = 0          // DOUBLE FUSE: bursts the fragments still have left
     var dwell = 0f           // seconds spent inside a CHRONO field
     var fracture = 0         // shards thrown when this shot lands
     var shardDamage = 0      // damage each of those shards carries
     var shardHoming = false
+    var reshatter = 0        // CHAIN BREAK: breaks the shards themselves still have
     var burn = 0f            // damage per second this shot leaves behind
 }
 
@@ -108,6 +111,10 @@ class Enemy {
     var link = -1            // partner index, for paired enemies
     var burn = 0f            // seconds left alight
     var burnDps = 0f
+    /** DILATION: clock scale for this frame, reset to 1 once the AI has run. */
+    var slow = 1f
+    /** DILATION: seconds left of taking damage harder for being held in time. */
+    var dilated = 0f
 }
 
 class PowerUp {

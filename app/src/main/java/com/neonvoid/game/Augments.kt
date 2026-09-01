@@ -188,6 +188,55 @@ object Aug {
         )
     )
 
+    /**
+     * The capstone each evolution earns at its final level. Reaching the cap
+     * used to be one more multiplier; now it changes what the system does, so
+     * a finished build is worth flying rather than just worth having.
+     */
+    val masteryNames = arrayOf(
+        arrayOf("SATURATION", "BREACH"),
+        arrayOf("AFTERGLOW", "MELTDOWN"),
+        arrayOf("SWARM LOGIC", "SALVO"),
+        arrayOf("HALO", "BROADSIDE"),
+        arrayOf("SUPERCONDUCTOR", "OVERVOLT"),
+        arrayOf("RESONANCE", "BULWARK FIELD"),
+        arrayOf("DOUBLE FUSE", "CARPET"),
+        arrayOf("SPLIT BEAM", "UNDERTOW"),
+        arrayOf("SQUADRON", "BARRAGE"),
+        arrayOf("EVENT HORIZON", "COLLAPSE"),
+        arrayOf("EMPLACEMENT", "BOMBARDMENT"),
+        arrayOf("DILATION", "RECOIL"),
+        arrayOf("FISSION", "CRATER"),
+        arrayOf("CHAIN BREAK", "SPLINTER"),
+        arrayOf("BLIGHT", "GREEN ROT"),
+        arrayOf("PARADOX", "DOPPELGANGER"),
+        arrayOf("EPICENTRE", "AFTERSHOCK WALL")
+    )
+
+    private val masteryBlurb = arrayOf(
+        arrayOf("Every side cannon punches through one more.", "Bolts pierce the whole rank and grow."),
+        arrayOf("The beam leaves the lane burning behind it.", "The column keeps firing after it fades."),
+        arrayOf("A missile that kills spawns a fresh seeker.", "Every launch throws a second warhead."),
+        arrayOf("One more node, and they strike far faster.", "Nodes fire a spread instead of a bolt."),
+        arrayOf("Every strike forks into a second bolt.", "The bolt fires twice as often."),
+        arrayOf("Each blast is followed by a second echo.", "The field throws fire back as well."),
+        arrayOf("The shrapnel bursts a second time.", "Two shells, and both burst wider."),
+        arrayOf("The beam cuts two targets at once.", "Drags far harder, and cuts while it drags."),
+        arrayOf("A fourth wingman joins the flight.", "Each wingman fires a pair of missiles."),
+        arrayOf("It collapses into a second, tighter pull.", "The detonation leaves a lasting scar."),
+        arrayOf("Turrets last far longer and never go idle.", "Every shell lands with a wider blast."),
+        arrayOf("Held in time: enemies crawl, and break far easier.", "Everything returned comes back doubled."),
+        arrayOf("The orb splits in two on its first kill.", "Every blast leaves a burning crater."),
+        arrayOf("Shards shatter once more on impact.", "Each shard seeks, then splinters again."),
+        arrayOf("Pools set whatever wades through them alight.", "Pools creep outward as they feed."),
+        arrayOf("The ghost fires twice as often.", "A second ghost, and both guard you."),
+        arrayOf("Each wall throws one back down the screen.", "The wall grinds twice as wide.")
+    )
+
+    /** The capstone's name, or "" if this is not a mastered evolution. */
+    fun masteryName(id: Int, level: Int, branch: Int): String =
+        if (isAbility(id) && branch != 0 && level >= EVOLVED_MAX) masteryNames[id][branch - 1] else ""
+
     private val statBlurb = arrayOf(
         "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
         "+10% fire rate.",
@@ -227,7 +276,11 @@ object Aug {
     fun blurb(id: Int, branchPick: Int, nextLevel: Int, currentBranch: Int): String {
         if (!isAbility(id)) return statBlurb[id]
         if (branchPick != 0) return branchBlurb[id][branchPick - 1]
-        if (currentBranch != 0) return "Level $nextLevel ${branchNames[id][currentBranch - 1]}. Stronger, faster, meaner."
+        if (currentBranch != 0) {
+            // the last level is a capstone, so it says what it actually unlocks
+            if (nextLevel >= EVOLVED_MAX) return masteryBlurb[id][currentBranch - 1]
+            return "Level $nextLevel ${branchNames[id][currentBranch - 1]}. Stronger, faster, meaner."
+        }
         if (nextLevel == 1) return abilityBlurb[id]
         return when (id) {
             SPREAD -> "Level $nextLevel: ${if (nextLevel == 2) "four" else "six"} side cannons."
@@ -286,6 +339,14 @@ class Loadout {
     fun canEvolve(id: Int): Boolean =
         Aug.isAbility(id) && lvl[id] >= Aug.BASE_MAX && branch[id] == 0
 
+    /**
+     * True once an evolved ability has been taken all the way to its cap and
+     * earned its capstone. Every ability checks this to decide whether to run
+     * its mastered behaviour.
+     */
+    fun mastered(id: Int): Boolean =
+        Aug.isAbility(id) && branch[id] != 0 && lvl[id] >= Aug.EVOLVED_MAX
+
     private fun canLevel(id: Int): Boolean = when {
         !Aug.isAbility(id) -> lvl[id] < Aug.statMax[id]
         branch[id] != 0 -> lvl[id] < Aug.EVOLVED_MAX
@@ -341,22 +402,27 @@ class Loadout {
 
     private fun card(id: Int, branchPick: Int): AugCard {
         val next = lvl[id] + 1
+        val br = if (Aug.isAbility(id)) branch[id] else 0
+        // the card that finishes an evolution is the capstone, and says so
+        val capstone = branchPick == 0 && Aug.isAbility(id) && br != 0 && next >= Aug.EVOLVED_MAX
         val tag = when {
             branchPick != 0 -> "EVOLUTION"
+            capstone -> "MASTERY"
             lvl[id] == 0 -> "NEW SYSTEM"
             else -> "LEVEL $next"
         }
         val title = when {
             branchPick != 0 -> Aug.branchNames[id][branchPick - 1]
-            else -> Aug.tierName(id, next, branch.getOrElse(id) { 0 })
+            capstone -> Aug.masteryNames[id][br - 1]
+            else -> Aug.tierName(id, next, br)
         }
         return AugCard(
             id = id,
             branchPick = branchPick,
             title = title,
             tag = tag,
-            body = Aug.blurb(id, branchPick, next, if (Aug.isAbility(id)) branch[id] else 0),
-            color = if (branchPick != 0) Palette.AMBER else Aug.colors[id]
+            body = Aug.blurb(id, branchPick, next, br),
+            color = if (branchPick != 0 || capstone) Palette.AMBER else Aug.colors[id]
         )
     }
 

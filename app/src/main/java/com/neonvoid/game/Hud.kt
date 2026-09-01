@@ -1375,7 +1375,13 @@ class Hud(private val prefs: Prefs) {
             if (x + size > w - 108f) break
             val col = Aug.colors[id]
             val evolved = Aug.isAbility(id) && world.loadout.branch[id] != 0
+            val mastered = world.loadout.mastered(id)
             Neon.panel(c, x, y, x + size, y + size, 6f, fade(col, if (evolved) 0.28f else 0.12f), fade(col, if (evolved) 1f else 0.6f), 1.3f, 0.5f)
+            // a capstoned system wears a bright rim, so a finished build reads
+            // at a glance without opening the pause panel
+            if (mastered) {
+                Neon.panel(c, x - 2f, y - 2f, x + size + 2f, y + size + 2f, 8f, 0, fade(Palette.WHITE, 0.85f), 1.1f, 0.9f)
+            }
             Neon.label(c, Aug.codes[id], x + size * 0.5f, y + 13f, 10.5f, col, Paint.Align.CENTER, 0.35f, 0.02f, Neon.FONT_BODY)
             Neon.label(c, world.loadout.lvl[id].toString(), x + size * 0.5f, y + 24f, 11f, fade(Palette.WHITE, 0.9f), Paint.Align.CENTER, 0.25f, 0f, Neon.FONT_NUM)
             x += step
@@ -1394,9 +1400,15 @@ class Hud(private val prefs: Prefs) {
         var y = h * 0.36f + 28f
         for (id in badgeIds) {
             val lo = world.loadout
-            val name = Aug.tierName(id, lo.lvl[id], if (Aug.isAbility(id)) lo.branch[id] else 0)
+            val br = if (Aug.isAbility(id)) lo.branch[id] else 0
+            val name = Aug.tierName(id, lo.lvl[id], br)
             Neon.label(c, name, cx - 12f, y, 15f, Aug.colors[id], Paint.Align.RIGHT, 0.4f, 0.12f)
-            Neon.label(c, "Lv ${lo.lvl[id]}", cx + 16f, y, 15f, fade(Palette.WHITE, 0.75f), Paint.Align.LEFT, 0.3f, 0.05f, Neon.FONT_NUM)
+            val mastery = Aug.masteryName(id, lo.lvl[id], br)
+            if (mastery.isEmpty()) {
+                Neon.label(c, "Lv ${lo.lvl[id]}", cx + 16f, y, 15f, fade(Palette.WHITE, 0.75f), Paint.Align.LEFT, 0.3f, 0.05f, Neon.FONT_NUM)
+            } else {
+                Neon.label(c, mastery, cx + 16f, y, 11f, fade(Palette.WHITE, 0.9f), Paint.Align.LEFT, 0.3f, 0.18f, Neon.FONT_BODY)
+            }
             y += 20f
             if (y > h * 0.55f) break
         }

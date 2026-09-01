@@ -93,15 +93,24 @@ the one before it, so the map never opens with a hole in the middle.
 Clearing a sector is not a stopping point — it is the point where the grid stops
 holding back. Wave 30 falls, a klaxon goes off, the screen frames itself in
 hazard red and **everything that can be sped up is, permanently**: enemies fire
-15% faster, their shots travel 17% faster, they move 12% faster, carry 30% more
-health, arrive in greater numbers and the breather between waves shortens. Every
-sector after that stacks another tier on top.
+17% faster, their shots travel 17% faster, they move 14% faster, carry 18% more
+health, arrive in far greater numbers and the breather between waves shortens.
+Every sector after that stacks another tier on top.
 
 It is a killscreen, not a wall. Against a scripted dodging pilot, crossing the
 first overload roughly halves how far a run gets per pool of hull segments —
 from about three waves to one or two — without ever making progress impossible.
 Bullet speed is capped so a shot always crosses the screen slowly enough to be
 read.
+
+The pressure comes from **density and danger rather than hit points**. A deep
+wave used to be spongy and nearly empty: measured against a fixed maxed build,
+wave 63 held an average of 3.5 enemies on a screen that fits 56, and took nearly
+two minutes to clear — the ship deleted each trickle and then waited. Groups now
+compress onto the timeline the deeper the run goes, health scales far more
+gently, and the speed, fire-rate and elite dials keep climbing instead of all
+capping out around wave 35. The same wave now runs at 20–29 enemies on screen,
+peaks at the cap, and clears in about 35 seconds.
 
 **SECTORS**, on the main menu, is where levels open up. Every sector is listed
 from the first run so you can see what is ahead, but only the first is unlocked;
@@ -280,6 +289,37 @@ levelling to 5 down the path you chose.
 | HARVEST | **PYRE** — pools burn hotter and spread wider | **BLOOM** — pools linger far longer and pull loot in |
 | MIRROR | **TWIN** — two ghosts instead of one | **PHANTOM** — the ghost takes a hit meant for you |
 | QUAKE | **FAULT** — two fast walls per cast | **TREMOR** — one slow, thick, punishing wall |
+
+**Mastery.** The last level of an evolution is not another multiplier — it is a
+**capstone** that changes what the system does, and the card says so before you
+take it. Finishing one is announced as `MASTERED`, and the badge on the HUD
+wears a bright rim from then on.
+
+<p align="center"><img src="docs/preview/mastery.png" width="42%" alt="A finished build: four capstoned systems running at once" /></p>
+
+| Ability | Branch A capstone | Branch B capstone |
+| --- | --- | --- |
+| SPREAD | **SATURATION** — every shot in the curtain pierces | **BREACH** — bolts run the whole rank |
+| LANCE | **AFTERGLOW** — the lane keeps burning behind the beam | **MELTDOWN** — the column holds far longer |
+| SWARM | **SWARM LOGIC** — a seeker that kills spawns a fresh one | **SALVO** — every launch throws a pair |
+| ORBIT | **HALO** — a seventh node, striking twice as fast | **BROADSIDE** — nodes fire a spread, not a bolt |
+| ARC | **SUPERCONDUCTOR** — every link forks a second bolt | **OVERVOLT** — the railgun recharges in half the time |
+| PULSE | **RESONANCE** — a wider second ring follows each blast | **BULWARK FIELD** — the field sends the fire home |
+| FLAK | **DOUBLE FUSE** — the shrapnel bursts a second time | **CARPET** — two shells, both bursting wider |
+| TETHER | **SPLIT BEAM** — cuts two targets at once | **UNDERTOW** — hauls far harder, and cuts while it hauls |
+| WING | **SQUADRON** — a fourth wingman | **BARRAGE** — each wing fires a pair of missiles |
+| VORTEX | **EVENT HORIZON** — it collapses into a second, tighter pull | **COLLAPSE** — the detonation leaves burning ground |
+| SENTINEL | **EMPLACEMENT** — turrets dig in for twice as long | **BOMBARDMENT** — every shell lands with a blast |
+| CHRONO | **DILATION** — enemies crawl, and break far easier | **RECOIL** — everything returned comes back doubled |
+| RICOCHET | **FISSION** — the orb splits in two on its first kill | **CRATER** — every blast leaves burning ground |
+| FRACTURE | **CHAIN BREAK** — shards shatter once more | **SPLINTER** — seeking shards splinter again |
+| HARVEST | **BLIGHT** — pools set what wades through them alight | **GREEN ROT** — pools creep outward as they feed |
+| MIRROR | **PARADOX** — the ghost fires twice as often | **DOPPELGANGER** — a second ghost, both guarding you |
+| QUAKE | **EPICENTRE** — each wall throws one back down the screen | **AFTERSHOCK WALL** — the wall grinds twice as wide |
+
+A finished build is meant to feel finished: against a fixed maxed loadout the
+capstones are worth roughly a third to a half of a path's output, and several
+change how the system is flown rather than only how hard it hits.
 
 **Stat modules** are the other half of the offer, repeatable and stackable:
 RAPID (fire rate), POWER (damage), VELOCITY (projectile speed), AGILITY
@@ -561,17 +601,25 @@ validated headlessly here:
   counted inside a single difficulty band. Crossing the first overload takes a
   run from roughly three waves per pool of hull segments to one or two, with
   live enemy fire going from ~300 to ~510 units/second.
+- Deep-wave pacing measured against a *fixed* maxed loadout rather than a random
+  draft, since a drafted run's wave times say as much about the draft as about
+  the balance. It reports seconds to clear and how full the screen was, at both
+  ordinary and boss waves — which is how the late-game dead air was found, and
+  how the fix was confirmed.
 - Every ability path forced and played: all 51 combinations (seventeen
   abilities, base plus both evolutions) run 150 simulated seconds each without a
   crash. The suite is also the balance yardstick, compared on the median score.
   A single pass is far too noisy to tune against — one path swung between 100k
   and 245k across six runs of the *same* build — so tuning is done on medians of
-  20–30 passes per path, which is what the current spread of −26% to +46% around
-  the median was measured with. Note the scripted pilot is invulnerable and
-  weaves along the bottom of the screen, so it systematically undervalues
-  defensive and proximity systems (AEGIS, STASIS, REPULSOR, CHRONO, ORBIT):
-  those read low here and were left deliberately above where the metric alone
-  would put them.
+  20–30 passes per path, which is what the current spread of roughly −40% to
+  +55% around the median was measured with. The band is wider than it was before
+  the capstones, which is the point: a finished evolution is meant to be worth
+  finishing. Note the scripted pilot is invulnerable and weaves along the bottom
+  of the screen, so it systematically undervalues defensive and proximity
+  systems (AEGIS, STASIS, REPULSOR, CHRONO, ORBIT): those read low here and were
+  left deliberately above where the metric alone would put them. DILATION is the
+  clearest case — slowing what you are farming costs a metric that only counts
+  score per second, while being plainly good to actually fly behind.
 - The soundtrack rendered offline to WAV and checked for level, clipping and
   rhythmic structure — the synth is deliberately free of Android imports so the
   audio that ships is the audio that was inspected.

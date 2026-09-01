@@ -20,7 +20,13 @@ object EnemyAI {
         return abs(d) < SHIELD_ARC
     }
 
-    fun update(w: World, e: Enemy, dt: Float) {
+    fun update(w: World, e: Enemy, dtRaw: Float) {
+        // A mastered STASIS field drags whatever is inside it. Running the
+        // enemy on a slowed clock holds its movement, its weave and its fire
+        // back together, rather than any one of them in isolation. The flag is
+        // re-applied every frame by the field, so it lapses on its own.
+        val dt = if (e.slow < 1f) dtRaw * e.slow else dtRaw
+        e.slow = 1f
         when (e.kind) {
             EK.DRIFTER -> drifter(w, e, dt)
             EK.WEAVER -> weaver(w, e, dt)

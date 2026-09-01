@@ -193,7 +193,7 @@ object Waves {
 
     /** Mobs one wave may field, tracking the curve the old director produced. */
     fun mobCeiling(wave: Int, overload: Int): Int =
-        (18 + (wave * 2.2f).toInt().coerceAtMost(70)) + overload * 10
+        (18 + (wave * 2.2f).toInt().coerceAtMost(88)) + overload * 14
 
     private fun group(
         kind: Int, form: Int, count: Int, gap: Float, elite: Boolean = false
