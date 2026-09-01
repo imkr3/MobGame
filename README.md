@@ -21,7 +21,7 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
 <p align="center">
   <img src="docs/preview/abilities.png" width="32%" alt="Abilities in play" />
   <img src="docs/preview/augments.png" width="32%" alt="Augment choice" />
-  <img src="docs/preview/levels.png" width="32%" alt="The ten sector themes" />
+  <img src="docs/preview/levels.png" width="32%" alt="The fourteen sector themes" />
 </p>
 <p align="center">
   <img src="docs/preview/records.png" width="32%" alt="Pilot tab" />
@@ -34,7 +34,7 @@ no dependencies — pure Kotlin drawing onto a `SurfaceView`.
   <img src="docs/preview/coop-join.png" width="48%" alt="Joining" />
 </p>
 
-<p align="center"><img src="docs/preview/levels.png" width="70%" alt="The ten level themes" /></p>
+<p align="center"><img src="docs/preview/levels.png" width="70%" alt="The fourteen level themes" /></p>
 
 > The images above are rendered from the game's own drawing code through a headless
 > harness (see [Verification](#verification)), not captured from a device.
@@ -80,9 +80,13 @@ where big runs are made.
 
 ### Levels
 
-The run moves through ten themed levels of **30 waves** each, then loops. Every
-level has its own palette, enemy roster, boss pool and music track. Bosses land
-every fifth wave, so six per sector, and the sixth closes it out.
+The run moves through fourteen themed levels of **30 waves** each, then loops.
+Every level has its own palette, enemy roster, boss pool and music track. Bosses
+land every fifth wave, so six per sector, and the sixth closes it out.
+
+Sectors open in order. Each carries its own goal — reach a wave, pass a score,
+bank a kill count, own enough hulls — and a sector needs both its own goal and
+the one before it, so the map never opens with a hole in the middle.
 
 ### The overload
 
@@ -168,9 +172,13 @@ furniture drawn behind the play field.
 | AZURE SPIRE | Crystal spires, falling shards and cold shafts of light |
 | ROSE NEBULA | Drifting petals and soft gas, no grid |
 | THE HOLLOW | Near-empty, far-off wrecks, and the signal dropping out |
+| STORM LINE | Driving rain, and forked lightning that picks out the horizon |
+| TIDAL REEF | Reef arches at three depths with bubble columns rising through them |
+| THE BONEYARD | Dead hulls listing in rows, running lights long dead |
+| AURORA GATE | Curtains of light folding overhead, no grid beneath them |
 
-One pool of sixty parallax motes serves all ten — what they are drawn as, and
-how they move, is the terrain's business — so the variety costs one array.
+One pool of sixty parallax motes serves all fourteen — what they are drawn as,
+and how they move, is the terrain's business — so the variety costs one array.
 
 ### How a wave is built
 
@@ -239,6 +247,9 @@ offers are level-ups of what you already carry. Early picks are commitments.
 | **CHRONO** | A time field around you drags enemy fire to a crawl |
 | **RICOCHET** | A heavy orb bounces around the arena, mauling what it meets |
 | **FRACTURE** | Your main gun shots shatter into shards on impact |
+| **HARVEST** | Every kill spills a corrosive pool where it fell |
+| **MIRROR** | A ghost of your ship flies alongside and fires with you |
+| **QUAKE** | A wall of force rolls up the screen, edge to edge |
 
 The HUD shows `AUGMENTS n/8` above the lives, and the choice screen shows the
 bay state, so you always know how much room is left.
@@ -266,6 +277,9 @@ levelling to 5 down the path you chose.
 | CHRONO | **STASIS** — a huge field that jams triggers; held fire pays out as score | **BACKLASH** — caught fire turns and flies back at them |
 | RICOCHET | **CAROM** — three fast orbs carving the screen | **DEMOLISHER** — one colossal orb detonating on every bounce |
 | FRACTURE | **SHATTER** — far more shards, thrown wider | **RUPTURE** — fewer, heavy shards that seek a target |
+| HARVEST | **PYRE** — pools burn hotter and spread wider | **BLOOM** — pools linger far longer and pull loot in |
+| MIRROR | **TWIN** — two ghosts instead of one | **PHANTOM** — the ghost takes a hit meant for you |
+| QUAKE | **FAULT** — two fast walls per cast | **TREMOR** — one slow, thick, punishing wall |
 
 **Stat modules** are the other half of the offer, repeatable and stackable:
 RAPID (fire rate), POWER (damage), VELOCITY (projectile speed), AGILITY
@@ -273,7 +287,11 @@ RAPID (fire rate), POWER (damage), VELOCITY (projectile speed), AGILITY
 capacity), SALVAGE (score), REPAIR (hull), COOLANT (ability cooldowns), PIERCE
 (shots punch through one more enemy), CRIT (chance to hit twice) and RECLAIM
 (pickups top up overdrive), HARDPOINT (raises the main gun's ceiling), EVASION
-(a longer mercy window) and BOUNTY (more, richer gems).
+(a longer mercy window) and BOUNTY (more, richer gems). Four more reward a
+particular way of flying or fighting: **FOCUS** (damage that climbs the stiller
+you hold), **CASCADE** (each kill winds the trigger tighter, and it stacks),
+**BULWARK** (a shield soaks more than one hit before it breaks) and
+**AFTERSHOCK** (a kill can detonate, taking its neighbours with it).
 
 Five of the modules are conditional rather than flat, and they reward how you
 fly: **MOMENTUM** (damage that scales with how hard you are moving),
@@ -282,7 +300,7 @@ five seconds), **OVERCLOCK** (longer overdrive, and it charges faster),
 **AFTERBURN** (main gun hits set the target alight) and **RECOVERY** (a spent
 shield grows back on its own).
 
-Thirty-five augments in total, fourteen of them abilities, for eight bay slots.
+Forty-two augments in total, seventeen of them abilities, for eight bay slots.
 
 Your current kit shows as badges above the lives counter, and in full on the
 pause screen.
@@ -335,10 +353,10 @@ raised in the middle.
 
 | Tab | What lives there |
 | --- | --- |
-| **SHOP** | Fourteen permanent upgrades, the later half gated behind pilot rank |
+| **SHOP** | Nineteen permanent upgrades, the later half gated behind pilot rank |
 | **HANGAR** | The hull roster, the summon buttons and the live pull odds |
 | **BATTLE** | The hull and sector you will launch in, the PLAY button, co-op, and the three open contracts |
-| **SECTORS** | The ten sectors, locked ones showing what they want |
+| **SECTORS** | The fourteen sectors, locked ones showing what they want. Scrolls |
 | **PILOT** | Rank, the record sheet, the sector checklist and the sound settings |
 
 ### Contracts
@@ -359,7 +377,9 @@ list from the first launch.
 
 ### Shop
 
-The other place cores go: fourteen permanent upgrades that carry into every run.
+The other place cores go: nineteen permanent upgrades that carry into every
+run. The list opens up with pilot rank rather than arriving all at once, and it
+scrolls — drag anywhere on it, including from a card.
 
 | | Effect |
 | --- | --- |
@@ -375,17 +395,22 @@ The other place cores go: fourteen permanent upgrades that carry into every run.
 | **SCAVENGER** | +22% chance of a pickup per level |
 | **GRAZE FIELD** | +30% graze radius per level |
 | **FORTUNE CIRCUIT** | Leans the summon weights towards the rarer hulls |
+| **RESERVE TANK** | +0.8s of overdrive per level, every time you fire it |
+| **SALVAGE PODS** | +30% score per level from every gem you collect |
+| **REINFORCED CANOPY** | +0.35s of mercy per level after a hit lands |
+| **CORE BROKER** | +25% cores per level from every contract you claim |
+| **ESCORT CONTRACT** | Launch with a wingman already flying |
 | **WIDE DRAFT** | Every upgrade offers a fourth card |
 | **EMERGENCY CORE** | Once a run, come back instead of going down |
 
-The first seven smooth the opening and the economy; the last two are
+Most of them smooth the opening and the economy; the last three are
 run-changing and priced as long-term goals.
 
 ### Records
 
 The PILOT tab tracks best score, furthest wave, sectors cleared, best combo,
 runs flown, total kills, contracts completed, cores earned, hulls owned and
-summons, plus a checklist of which of the ten sectors you have reached.
+summons, plus a checklist of which of the fourteen sectors you have reached.
 
 Duplicates refund cores, scaled by rarity.
 
@@ -393,8 +418,8 @@ Duplicates refund cores, scaled by rarity.
 
 Music and effects are generated at runtime by a small software synth — a step
 sequencer driving square, saw, triangle and noise voices through an envelope,
-a sweeping one-pole filter and a soft clipper. Eleven tracks (menu plus one per
-level), each built from four alternating bars with an arpeggio layer, a
+a sweeping one-pole filter and a soft clipper. Fifteen tracks (menu plus one
+per level), each built from four alternating bars with an arpeggio layer, a
 detuned lead, octave-jumping bass and a drum fill closing every fourth bar.
 Boss waves switch the arrangement to a busier mix. No audio files ship with
 the game. Music, effects and haptics each toggle from the PILOT tab.
@@ -407,6 +432,10 @@ the game. Music, effects and haptics each toggle from the PILOT tab.
 | **Weaver** | Sine-weaves down the screen, fires aimed pairs |
 | **Charger** | Drops in, locks on (red telegraph ring), then dives at you. Doesn't shoot — dodge it |
 | **Turret** | Hovers and pumps out 8-way radial bursts. Tanky. Withdraws after 16 seconds |
+| **Stalker** | Slides into your lane and holds it, firing straight down the column |
+| **Howler** | Winds up, then throws a full ring of shells with one gap — aimed at you, so it is always reachable |
+| **Seeder** | Drops pods that drift down and bloom where they stop. Shooting a pod early only decides where |
+| **Mender** | No gun of its own. Beams the most damaged thing near it back to health — kill it first |
 | **Guardian** | Boss, every 5th wave. Three phases — aimed fans, then radial rings, then a relentless spiral with heavy shells |
 
 Weapons upgrade to level 5 via `W` pickups; `S` grants a shield that absorbs one
@@ -441,7 +470,7 @@ app/src/main/java/com/neonvoid/game/
                     director, boss patterns, scoring
   Augments.kt       Augment catalogue, evolution branches, offer generation
                     and every stat the loadout derives
-  Levels.kt         The ten level themes: palettes, rosters, boss pools, music
+  Levels.kt         The fourteen level themes: palettes, rosters, boss pools, music
   Decor.kt          Per-sector terrain: silhouettes, parallax motes, furniture
   Waves.kt          Wave archetypes, formations and the mob budget
   Progress.kt       Pilot rank, the run tally and the rolling contracts
@@ -519,7 +548,7 @@ validated headlessly here:
   is the class of bug where adding one augment and forgetting one array is an
   index crash on someone's phone rather than a compile error here.
 - Waves proven unable to stall: a pilot that never fires a shot and cannot die
-  is flown through four waves of all ten sectors, and every wave has to drain on
+  is flown through four waves of all fourteen sectors, and every wave has to drain on
   its own. This caught orbiters (which rebuild their position from a stored
   centre each frame) and wisps (whose blink clamps them back to the top of the
   screen) holding the field forever, either of which soft-locks a run with no
@@ -532,14 +561,17 @@ validated headlessly here:
   counted inside a single difficulty band. Crossing the first overload takes a
   run from roughly three waves per pool of hull segments to one or two, with
   live enemy fire going from ~300 to ~510 units/second.
-- Every ability path forced and played: all 42 combinations (fourteen abilities,
-  base plus both evolutions) run 150 simulated seconds each without a crash. The
-  suite is also the balance yardstick — eight passes per path, compared on the
-  median score, which is what the augment tuning was done against. Note the
-  scripted pilot is invulnerable and weaves along the bottom of the screen, so it
-  systematically undervalues defensive and proximity systems (AEGIS, STASIS,
-  REPULSOR, CHRONO, ORBIT): those read low here and were left deliberately above
-  where the metric alone would put them.
+- Every ability path forced and played: all 51 combinations (seventeen
+  abilities, base plus both evolutions) run 150 simulated seconds each without a
+  crash. The suite is also the balance yardstick, compared on the median score.
+  A single pass is far too noisy to tune against — one path swung between 100k
+  and 245k across six runs of the *same* build — so tuning is done on medians of
+  20–30 passes per path, which is what the current spread of −26% to +46% around
+  the median was measured with. Note the scripted pilot is invulnerable and
+  weaves along the bottom of the screen, so it systematically undervalues
+  defensive and proximity systems (AEGIS, STASIS, REPULSOR, CHRONO, ORBIT):
+  those read low here and were left deliberately above where the metric alone
+  would put them.
 - The soundtrack rendered offline to WAV and checked for level, clipping and
   rhythmic structure — the synth is deliberately free of Android imports so the
   audio that ships is the audio that was inspected.
@@ -549,6 +581,12 @@ validated headlessly here:
   claiming a contract, the sound toggles, and then hangar → summon → reveal →
   hull select → play → augment choice → pause → resume → app-pause → back →
   death → retry.
+- The wave director planned for every sector, forty times over, checking that
+  each sector actually fields every kind on its roster, that no wave overshoots
+  its mob ceiling, and that no kind escapes the roster it belongs to.
+- The sector map checked for holes: because the gates sit on different axes
+  (waves, score, kills, hulls), a later one can be met first, so the ladder is
+  asserted to stay shut from the first unmet gate onwards.
 - Rendered to PNG by backing the Canvas stubs with Java2D, which produced the
   screenshots above.
 

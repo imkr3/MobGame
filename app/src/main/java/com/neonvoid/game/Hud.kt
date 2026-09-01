@@ -119,6 +119,13 @@ class Hud(private val prefs: Prefs) {
     private var contentBot = 0f
     private val contentH: Float get() = contentBot - contentTop
 
+    // Both long lists scroll: there are more shop lines and more sectors than
+    // fit a phone, and paging them would hide what is on the other page.
+    private var shopScroll = 0f
+    private var shopSpan = 0f
+    private var levelScroll = 0f
+    private var levelSpan = 0f
+
     private val arc = RectF()
     private val arcPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shipPath = Path()
@@ -160,30 +167,8 @@ class Hud(private val prefs: Prefs) {
         sfx.place(cx, toggleY, tw, 38f)
         haptic.place(cx + tw + 8f, toggleY, tw, 38f)
 
-        // ---- SHOP tab: two columns of cards -----------------------------
-        // every tab keeps a header strip clear above its grid
-        val shopRow = (ch - HEADER) / 7f
-        for (i in shopRows.indices) {
-            shopRows[i].place(
-                cx + (if (i % 2 == 0) -1f else 1f) * (w * 0.235f),
-                contentTop + HEADER + shopRow * (i / 2 + 0.5f),
-                w * 0.455f, shopRow - 10f
-            )
-        }
-
-        // ---- SECTORS tab ------------------------------------------------
-        val cardW = w * 0.44f
-        val levelRow = clamp((ch - 190f) / 5f, 84f, 128f)
-        val gridTop = contentTop + HEADER + 62f
-        for (i in levelCells.indices) {
-            levelCells[i].place(
-                cx + (if (i % 2 == 0) -1f else 1f) * (cardW * 0.5f + 6f),
-                gridTop + (i / 2) * levelRow,
-                cardW, levelRow - 16f
-            )
-        }
-        // hung off the grid so it never drifts away from the last row
-        launch.place(cx, minOf(gridTop + 4.5f * levelRow + 62f, contentBot - 34f), w * 0.52f, 54f)
+        layoutShop()
+        layoutSectors()
 
         // ---- HANGAR tab -------------------------------------------------
         summon.place(cx - w * 0.165f, contentBot - 34f, w * 0.29f, 54f)
@@ -222,6 +207,88 @@ class Hud(private val prefs: Prefs) {
 
         retry.place(cx, h * 0.66f, w * 0.60f, 58f)
         toMenu.place(cx, h * 0.66f + 76f, w * 0.50f, 48f)
+    }
+
+    /** Where the scrollable part of a tab starts and how tall it is. */
+    private val listTop: Float get() = contentTop + HEADER
+    private val sectorListBot: Float get() = contentBot - 76f
+
+    private fun layoutShop() {
+        val cx = w * 0.5f
+        val rows = (shopRows.size + 1) / 2
+        val row = 118f
+        shopSpan = rows * row
+        shopScroll = clamp(shopScroll, 0f, (shopSpan - (contentBot - listTop)).coerceAtLeast(0f))
+        for (i in shopRows.indices) {
+            shopRows[i].place(
+                cx + (if (i % 2 == 0) -1f else 1f) * (w * 0.235f),
+                listTop + row * (i / 2 + 0.5f) - shopScroll,
+                w * 0.455f, row - 12f
+            )
+        }
+    }
+
+    private fun layoutSectors() {
+        val cx = w * 0.5f
+        val cardW = w * 0.44f
+        val rows = (levelCells.size + 1) / 2
+        val row = 104f
+        levelSpan = rows * row + 12f
+        levelScroll = clamp(levelScroll, 0f, (levelSpan - (sectorListBot - listTop)).coerceAtLeast(0f))
+        for (i in levelCells.indices) {
+            levelCells[i].place(
+                cx + (if (i % 2 == 0) -1f else 1f) * (cardW * 0.5f + 6f),
+                listTop + row * (i / 2 + 0.5f) - levelScroll,
+                cardW, row - 14f
+            )
+        }
+        // pinned under the list, so it is always reachable however far you scroll
+        launch.place(cx, contentBot - 30f, w * 0.52f, 52f)
+    }
+
+    /**
+     * The rows of a scrolling list keep their places when they scroll out of
+     * the clip, so a card that is no longer drawn would still swallow taps -
+     * including taps on the nav bar it now sits behind. Only the rows actually
+     * inside the viewport are live.
+     */
+    private fun visibleIn(rows: Array<Button>, top: Float, bot: Float): List<Button> =
+        rows.filter { it.cy + it.h * 0.5f > top && it.cy - it.h * 0.5f < bot }
+
+    fun liveShopRows(): List<Button> = visibleIn(shopRows, listTop, contentBot)
+
+    fun liveLevelCells(): List<Button> = visibleIn(levelCells, listTop, sectorListBot)
+
+    /** Opening a tab shows the top of its list rather than wherever it was left. */
+    fun resetScroll() {
+        shopScroll = 0f
+        levelScroll = 0f
+        layoutShop()
+        layoutSectors()
+    }
+
+    /** Drag on a long list. Positive [dy] moves the content with the finger. */
+    fun scrollShop(dy: Float) {
+        shopScroll = clamp(shopScroll - dy, 0f, (shopSpan - (contentBot - listTop)).coerceAtLeast(0f))
+        layoutShop()
+    }
+
+    fun scrollSectors(dy: Float) {
+        levelScroll = clamp(levelScroll - dy, 0f, (levelSpan - (sectorListBot - listTop)).coerceAtLeast(0f))
+        layoutSectors()
+    }
+
+    /** A thin rail on the right showing how far down a long list you are. */
+    private fun scrollRail(c: Canvas, scroll: Float, span: Float, top: Float, bot: Float, color: Int) {
+        val view = bot - top
+        if (span <= view + 1f) return
+        val railH = view - 12f
+        val thumb = (railH * view / span).coerceAtLeast(24f)
+        val t = clamp(scroll / (span - view), 0f, 1f)
+        val x = w - 7f
+        Neon.fillRect(c, x - 1.5f, top + 6f, x + 1.5f, top + 6f + railH, fade(Palette.DIM, 0.25f))
+        val y = top + 6f + (railH - thumb) * t
+        Neon.fillRect(c, x - 2f, y, x + 2f, y + thumb, fade(color, 0.8f))
     }
 
     // --------------------------------------------------------------- pieces
@@ -379,10 +446,15 @@ class Hud(private val prefs: Prefs) {
         val p = world.player
 
         // score
-        // seven-digit scores used to run under the wave readout
+        // Seven- and eight-digit scores used to run under the wave readout, so
+        // the budget is measured against where that readout actually starts
+        // rather than against a fixed fraction of the screen.
+        val waveText = "WAVE ${world.wave}"
+        val waveHalf = Neon.textWidth(waveText, 18f, 0.22f) * 0.5f
+        val scoreRoom = (w * 0.5f - waveHalf - 30f).coerceAtLeast(w * 0.28f)
         val scoreText = formatScore(world.score)
         var scoreSize = 34f
-        while (scoreSize > 16f && Neon.textWidth(scoreText, scoreSize, 0.06f, Neon.FONT_NUM) > w * 0.40f) scoreSize -= 1f
+        while (scoreSize > 16f && Neon.textWidth(scoreText, scoreSize, 0.06f, Neon.FONT_NUM) > scoreRoom) scoreSize -= 1f
         Neon.label(c, scoreText, 18f, top + 34f, scoreSize, Palette.WHITE, Paint.Align.LEFT, 0.7f, 0.06f, Neon.FONT_NUM)
         Neon.label(c, "BEST ${formatScore(maxOf(prefs.bestScore, world.score))}", 20f, top + 56f, 15f, Palette.DIM, Paint.Align.LEFT, 0.4f, 0.1f)
 
@@ -400,7 +472,7 @@ class Hud(private val prefs: Prefs) {
 
         // wave + where you are + what clearing it buys you
         val sector = world.theme(world.wave.coerceAtLeast(1))
-        Neon.label(c, "WAVE ${world.wave}", w * 0.5f, top + 26f, 18f, Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.22f)
+        Neon.label(c, waveText, w * 0.5f, top + 26f, 18f, Palette.VIOLET, Paint.Align.CENTER, 0.6f, 0.22f)
         if (!world.bossPresent()) {
             Neon.label(c, sector.name, w * 0.5f, top + 42f, 11f, fade(sector.accent, 0.8f), Paint.Align.CENTER, 0.4f, 0.3f)
             if (world.overload > 0) {
@@ -449,6 +521,10 @@ class Hud(private val prefs: Prefs) {
             for (i in 0 until maxShield) {
                 val filled = i < p.shield
                 Neon.ring(c, lx, ly, 7f, fade(Palette.LIME, if (filled) 0.95f else 0.22f), 1.8f, if (filled) 0.9f else 0.2f)
+                // BULWARK: the pip taking the next hit shows how deep it is
+                if (filled && i == p.shield - 1 && p.shieldHits > 1) {
+                    Neon.ring(c, lx, ly, 4f, fade(Palette.WHITE, 0.7f), 1.4f, 0.6f)
+                }
                 if (filled) Neon.orb(c, lx, ly, 2.6f, fade(Palette.LIME, 0.9f), 0.7f)
                 lx += 18f
             }
@@ -901,6 +977,8 @@ class Hud(private val prefs: Prefs) {
         Neon.label(c, "PERMANENT - CARRIES INTO EVERY RUN", cx, contentTop + 29f, 9.5f,
             Palette.DIM, Paint.Align.CENTER, 0.25f, 0.16f, Neon.FONT_BODY)
 
+        c.save()
+        c.clipRect(0f, listTop - 4f, w, contentBot)
         for (i in Shop.items.indices) {
             val item = Shop.items[i]
             val b = shopRows[i]
@@ -951,6 +1029,8 @@ class Hud(private val prefs: Prefs) {
                     if (affordable) Palette.AMBER else Palette.DIM, Paint.Align.RIGHT, 0.5f, 0.06f, Neon.FONT_NUM)
             }
         }
+        c.restore()
+        scrollRail(c, shopScroll, shopSpan, listTop, contentBot, Palette.LIME)
     }
 
     /** The PILOT tab: rank, the record sheet, and the audio settings. */
@@ -1031,6 +1111,8 @@ class Hud(private val prefs: Prefs) {
             Palette.DIM, Paint.Align.CENTER, 0.25f, 0.14f, Neon.FONT_BODY
         )
 
+        c.save()
+        c.clipRect(0f, listTop - 4f, w, sectorListBot)
         for (i in levelCells.indices) {
             val theme = Levels.list[i]
             val b = levelCells[i]
@@ -1093,12 +1175,15 @@ class Hud(private val prefs: Prefs) {
             }
         }
 
+        c.restore()
+        scrollRail(c, levelScroll, levelSpan, listTop, sectorListBot, Palette.MAGENTA)
+
         val picked = Levels.list[selected.coerceIn(0, Levels.list.size - 1)]
         launch.label = "LAUNCH"
         launch.color = picked.accent
         drawButton(c, launch, time, true)
         Neon.label(
-            c, "BEGINS AT WAVE 1 OF ${picked.name}", cx, launch.cy - 40f, 10.5f,
+            c, "BEGINS AT WAVE 1 OF ${picked.name}", cx, launch.cy - 34f, 10.5f,
             Palette.DIM, Paint.Align.CENTER, 0.25f, 0.14f, Neon.FONT_BODY
         )
     }

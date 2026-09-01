@@ -28,6 +28,10 @@ object Terrain {
     const val ICE = 7         // frozen array: crystal spires and falling shards
     const val BLOOM = 8       // bloom field: petals and soft gas
     const val HOLLOW = 9      // nothing answers: near-empty, glitching
+    const val STORM = 10      // thunderhead: rain streaks and lightning
+    const val REEF = 11       // drowned garden: coral arches and bubbles
+    const val WRECK = 12      // boneyard: dead hulls hanging in the dark
+    const val AURORA = 13     // last light: curtains of colour
 }
 
 class LevelTheme(
@@ -62,18 +66,34 @@ object Levels {
         LevelReq("1,500 TOTAL KILLS", { it.totalKills >= 1500 }),
         LevelReq("REACH WAVE 45", { it.bestWave >= 45 }),
         LevelReq("OWN 8 HULLS", { ShipDex.ownedCount(it.ownedShips) >= 8 }),
-        LevelReq("CLEAR 2 LEVELS", { it.bestLevel >= 2 })
+        LevelReq("CLEAR 2 LEVELS", { it.bestLevel >= 2 }),
+        LevelReq("REACH WAVE 60", { it.bestWave >= 60 }),
+        LevelReq("SCORE 1,200,000", { it.bestScore >= 1_200_000 }),
+        LevelReq("5,000 TOTAL KILLS", { it.totalKills >= 5000 }),
+        LevelReq("CLEAR 4 LEVELS", { it.bestLevel >= 4 })
     )
 
-    fun unlocked(index: Int, prefs: Prefs): Boolean =
-        index in unlocks.indices && unlocks[index].test(prefs)
+    /**
+     * Requirements sit on different axes - waves, score, kills, hulls - so on
+     * their own a later sector can fall open while an earlier one is still
+     * shut. A sector needs its own goal *and* the one before it, which keeps
+     * the varied goals but makes the map open in order.
+     */
+    fun unlocked(index: Int, prefs: Prefs): Boolean {
+        if (index !in unlocks.indices) return false
+        for (i in 0..index) if (!unlocks[i].test(prefs)) return false
+        return true
+    }
 
     fun requirement(index: Int): String = unlocks.getOrNull(index)?.text ?: ""
 
     /** Bitmask of every level currently open, so new unlocks can be spotted. */
     fun unlockedMask(prefs: Prefs): Int {
         var m = 0
-        for (i in unlocks.indices) if (unlocks[i].test(prefs)) m = m or (1 shl i)
+        for (i in unlocks.indices) {
+            if (!unlocks[i].test(prefs)) break
+            m = m or (1 shl i)
+        }
         return m
     }
 
@@ -98,7 +118,7 @@ object Levels {
             skyTop = 0xFF3A0A18.toInt(), skyMid = 0xFF1A0410.toInt(), skyBottom = 0xFF0A0206.toInt(),
             sunStops = intArrayOf(0xCCFFF0A0.toInt(), 0xC6FF8A3D.toInt(), 0xBFFF3B4F.toInt(), 0xB3A81E5A.toInt()),
             grid = 0xFFFF6B5C.toInt(), nebula = 0xFFFF4A5C.toInt(),
-            roster = intArrayOf(EK.DRIFTER, EK.CHARGER, EK.SWARMER, EK.LANCER, EK.WISP),
+            roster = intArrayOf(EK.DRIFTER, EK.CHARGER, EK.SWARMER, EK.LANCER, EK.STALKER),
             bossPool = intArrayOf(BT.WARDEN, BT.GUARDIAN, BT.FORGE), musicKey = 2, terrain = Terrain.BELT
         ),
         LevelTheme(
@@ -106,7 +126,7 @@ object Levels {
             skyTop = 0xFF120B44.toInt(), skyMid = 0xFF08052A.toInt(), skyBottom = 0xFF03020F.toInt(),
             sunStops = intArrayOf(0xCCB0E8FF.toInt(), 0xC67AA2FF.toInt(), 0xBF6B4FFF.toInt(), 0xB33B1EA8.toInt()),
             grid = 0xFF7A5CFF.toInt(), nebula = 0xFF5C7AFF.toInt(),
-            roster = intArrayOf(EK.WEAVER, EK.TURRET, EK.ORBITER, EK.MINELAYER, EK.PYLON),
+            roster = intArrayOf(EK.WEAVER, EK.TURRET, EK.ORBITER, EK.MINELAYER, EK.PYLON, EK.HOWLER),
             bossPool = intArrayOf(BT.HIVE, BT.NULLIFIER), musicKey = 3, terrain = Terrain.STATION
         ),
         LevelTheme(
@@ -114,7 +134,7 @@ object Levels {
             skyTop = 0xFF2A2408.toInt(), skyMid = 0xFF141004.toInt(), skyBottom = 0xFF060502.toInt(),
             sunStops = intArrayOf(0xCCFFFFC0.toInt(), 0xC6FFD93D.toInt(), 0xBF9BFF57.toInt(), 0xB33DBF7A.toInt()),
             grid = Palette.LIME, nebula = 0xFFBFA030.toInt(),
-            roster = intArrayOf(EK.SPLITTER, EK.SHIELDER, EK.TURRET, EK.LANCER, EK.CARRIER),
+            roster = intArrayOf(EK.SPLITTER, EK.SHIELDER, EK.TURRET, EK.LANCER, EK.CARRIER, EK.MENDER),
             bossPool = intArrayOf(BT.FORGE, BT.WARDEN), musicKey = 4, terrain = Terrain.FOUNDRY
         ),
         LevelTheme(
@@ -130,7 +150,7 @@ object Levels {
             skyTop = 0xFF06301F.toInt(), skyMid = 0xFF031A11.toInt(), skyBottom = 0xFF010A07.toInt(),
             sunStops = intArrayOf(0xCCE8FFD0.toInt(), 0xC67AFFA0.toInt(), 0xBF2ED08A.toInt(), 0xB31A6B7A.toInt()),
             grid = 0xFF57FFB0.toInt(), nebula = 0xFF2EA88A.toInt(),
-            roster = intArrayOf(EK.SPLITTER, EK.CARRIER, EK.SWARMER, EK.ORBITER, EK.WEAVER),
+            roster = intArrayOf(EK.SPLITTER, EK.CARRIER, EK.SWARMER, EK.ORBITER, EK.SEEDER),
             bossPool = intArrayOf(BT.HIVE, BT.FORGE), musicKey = 6, terrain = Terrain.OVERGROWN
         ),
         LevelTheme(
@@ -164,9 +184,45 @@ object Levels {
             grid = 0xFF9090A0.toInt(), nebula = 0xFF505060.toInt(),
             roster = intArrayOf(
                 EK.LANCER, EK.SHIELDER, EK.CARRIER, EK.PYLON, EK.WISP,
-                EK.SPLITTER, EK.MINELAYER, EK.ORBITER, EK.CHARGER
+                EK.SPLITTER, EK.MINELAYER, EK.ORBITER, EK.STALKER, EK.HOWLER
             ),
             bossPool = intArrayOf(BT.NULLIFIER, BT.FORGE, BT.WARDEN, BT.HIVE), musicKey = 10, terrain = Terrain.HOLLOW
+        ),
+        LevelTheme(
+            name = "STORM LINE", subtitle = "THUNDERHEAD", accent = 0xFF9AD8FF.toInt(),
+            skyTop = 0xFF161C34.toInt(), skyMid = 0xFF0B1020.toInt(), skyBottom = 0xFF04060C.toInt(),
+            sunStops = intArrayOf(0xCCE8F4FF.toInt(), 0xC69AD8FF.toInt(), 0xBF5A78C8.toInt(), 0xB32A3A70.toInt()),
+            grid = 0xFF7FA8E0.toInt(), nebula = 0xFF4A5F9A.toInt(),
+            roster = intArrayOf(EK.STALKER, EK.WEAVER, EK.LANCER, EK.WISP, EK.CHARGER),
+            bossPool = intArrayOf(BT.WARDEN, BT.NULLIFIER), musicKey = 11, terrain = Terrain.STORM
+        ),
+        LevelTheme(
+            name = "TIDAL REEF", subtitle = "DROWNED GARDEN", accent = 0xFF3FE0C8.toInt(),
+            skyTop = 0xFF04303A.toInt(), skyMid = 0xFF021C24.toInt(), skyBottom = 0xFF010A0E.toInt(),
+            sunStops = intArrayOf(0xCCD8FFF4.toInt(), 0xC63FE0C8.toInt(), 0xBF1E9AA8.toInt(), 0xB3104A66.toInt()),
+            grid = 0xFF3FE0C8.toInt(), nebula = 0xFF1E7A98.toInt(),
+            roster = intArrayOf(EK.SEEDER, EK.ORBITER, EK.SWARMER, EK.SPLITTER, EK.WEAVER),
+            bossPool = intArrayOf(BT.HIVE, BT.GUARDIAN, BT.FORGE), musicKey = 12, terrain = Terrain.REEF
+        ),
+        LevelTheme(
+            name = "THE BONEYARD", subtitle = "NOTHING GETS SALVAGED", accent = 0xFFC8B48A.toInt(),
+            skyTop = 0xFF241E1A.toInt(), skyMid = 0xFF121010.toInt(), skyBottom = 0xFF050404.toInt(),
+            sunStops = intArrayOf(0xCCFFF0D0.toInt(), 0xC6C8B48A.toInt(), 0xBF8A7050.toInt(), 0xB34A3828.toInt()),
+            grid = 0xFF9A8A6A.toInt(), nebula = 0xFF6A5A44.toInt(),
+            roster = intArrayOf(EK.MENDER, EK.SHIELDER, EK.TURRET, EK.HOWLER, EK.CARRIER, EK.MINELAYER),
+            bossPool = intArrayOf(BT.FORGE, BT.WARDEN, BT.NULLIFIER), musicKey = 13, terrain = Terrain.WRECK
+        ),
+        LevelTheme(
+            name = "AURORA GATE", subtitle = "LAST LIGHT", accent = 0xFFB07AFF.toInt(),
+            skyTop = 0xFF1E0A3A.toInt(), skyMid = 0xFF100522.toInt(), skyBottom = 0xFF04020A.toInt(),
+            sunStops = intArrayOf(0xCCFFFFFF.toInt(), 0xC6C8A0FF.toInt(), 0xBF7A4AE0.toInt(), 0xB33A1A80.toInt()),
+            grid = 0xFFB07AFF.toInt(), nebula = 0xFF6A3AC8.toInt(),
+            roster = intArrayOf(
+                EK.STALKER, EK.HOWLER, EK.SEEDER, EK.MENDER, EK.PYLON,
+                EK.LANCER, EK.WISP, EK.SPLITTER, EK.CARRIER, EK.SHIELDER
+            ),
+            bossPool = intArrayOf(BT.NULLIFIER, BT.HIVE, BT.FORGE, BT.WARDEN, BT.GUARDIAN),
+            musicKey = 14, terrain = Terrain.AURORA
         )
     )
 

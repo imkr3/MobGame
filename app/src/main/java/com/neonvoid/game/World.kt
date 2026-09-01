@@ -28,6 +28,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         /** Seconds a boss fight runs at full toughness before it starts giving. */
         const val BOSS_PATIENCE = 60f
 
+        /** Kills deep an AFTERSHOCK chain may run before it stops spreading. */
+        const val AFTERSHOCK_CHAIN = 2
+
         /** How long the overload klaxon runs before settling to a low hum. */
         const val ALARM_TIME = 3.6f
 
@@ -263,7 +266,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     fun triggerOverdrive(slotIndex: Int): Boolean {
         if (!canOverdrive(slotIndex)) return false
         val p = slots[slotIndex].player
-        p.odTime = OD_DURATION * slots[slotIndex].loadout.overdriveSeconds()
+        p.odTime = OD_DURATION * slots[slotIndex].loadout.overdriveSeconds() + meta.overdriveBonus
         p.overdrive = 0f
         tally.overdrives++
         val gained = clearHostileBullets(true)
@@ -326,7 +329,11 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val label = loadout.apply(c)
         when (c.id) {
             Aug.REPAIR -> player.lives = (player.lives + 1).coerceAtMost(5)
-            Aug.ARMOR -> player.shield = (player.shield + 1).coerceAtMost(loadout.maxShield())
+            Aug.ARMOR -> {
+                player.shield = (player.shield + 1).coerceAtMost(loadout.maxShield())
+                player.shieldHits = loadout.shieldDepth()
+            }
+            Aug.BULWARK -> player.shieldHits = loadout.shieldDepth()
             Aug.HARDPOINT -> player.weapon = (player.weapon + 1).coerceAtMost(loadout.maxWeapon())
         }
         s.awaitingAugment = false
@@ -493,6 +500,20 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
     }
 
+    /** BLOOM pools drag loose pickups towards them. */
+    internal fun magnetiseWithin(x: Float, y: Float, r: Float, dt: Float) {
+        for (u in pickups) {
+            if (!u.active) continue
+            val dx = x - u.x
+            val dy = y - u.y
+            val d = len(dx, dy)
+            if (d > r || d < 0.001f) continue
+            val pull = (1f - d / r) * 480f
+            u.vx += dx / d * pull * dt
+            u.vy += dy / d * pull * dt
+        }
+    }
+
     /** NOVA converts caught fire into score. */
     internal fun bankBulletsWithin(x: Float, y: Float, r: Float) {
         var payout = 0
@@ -651,6 +672,42 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                     e.link = partner
                     enemies[partner].link = mine
                 }
+            }
+            EK.STALKER -> {
+                e.r = 16f; e.hp = 8f * hpMul; e.vy = 132f * speedMul
+                e.holdY = rnd(h * 0.10f, h * 0.22f)
+                e.fireEvery = 1.5f * rateMul; e.fireT = rnd(0.6f, 1.4f)
+                e.score = 260; e.color = Palette.RED
+                e.dropBias = 1.4f
+            }
+            EK.HOWLER -> {
+                e.r = 20f; e.hp = 14f * hpMul; e.vy = 82f * speedMul
+                e.holdY = rnd(h * 0.14f, h * 0.28f)
+                e.amp = rnd(50f, 110f); e.freq = rnd(0.6f, 1.1f)
+                e.fireEvery = 3.4f * rateMul; e.fireT = rnd(1.6f, 2.6f)
+                e.score = 340; e.color = Palette.AMBER
+                e.dropBias = 2.0f
+            }
+            EK.SEEDER -> {
+                e.r = 19f; e.hp = 12f * hpMul; e.vy = 86f * speedMul
+                e.holdY = rnd(h * 0.12f, h * 0.26f)
+                e.vx = if (chance(0.5f)) 52f else -52f
+                e.fireEvery = 2.4f * rateMul; e.fireT = rnd(0.8f, 1.8f)
+                e.score = 300; e.color = Palette.LIME
+                e.dropBias = 1.8f
+            }
+            EK.POD -> {
+                e.r = 9f; e.hp = 2f * hpMul.coerceAtMost(4f); e.vy = 58f
+                e.stateT = 2f
+                e.score = 60; e.color = Palette.LIME
+                e.dropBias = 0.4f
+            }
+            EK.MENDER -> {
+                e.r = 15f; e.hp = 10f * hpMul; e.vy = 104f * speedMul
+                e.holdY = rnd(h * 0.14f, h * 0.30f)
+                e.vx = if (chance(0.5f)) 64f else -64f
+                e.score = 380; e.color = Palette.LIME
+                e.dropBias = 2.4f
             }
             EK.BOSS -> {
                 val theme = theme(wave)
@@ -869,7 +926,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             player.respawnT -= dt
             if (player.respawnT <= 0f) {
                 player.alive = true
-                player.invuln = 1.5f + loadout.mercyBonus()
+                player.invuln = 1.5f + loadout.mercyBonus() + meta.mercyBonus
                 s.home(w, h)
                 fx.shockwave(player.x, player.y, 90f, Palette.CYAN, 0.5f, 2.5f)
             }
@@ -886,6 +943,10 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
         if (player.invuln > 0f) player.invuln -= dt
         if (player.revenge > 0f) player.revenge -= dt
+        if (player.cascadeT > 0f) {
+            player.cascadeT -= dt
+            if (player.cascadeT <= 0f) player.cascade = 0
+        }
         val regen = loadout.shieldRegen()
         if (regen > 0f && player.shield < loadout.maxShield()) {
             player.regenT -= dt
@@ -921,8 +982,9 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 1 -> 0.155f; 2 -> 0.145f; 3 -> 0.135f; 4 -> 0.125f; else -> 0.115f
             }
             base *= loadout.fireIntervalMul() * ship.fireMul
-            if (loadout.branch[Aug.SPREAD] == Aug.A) base *= 0.82f
+            if (loadout.branch[Aug.SPREAD] == Aug.A) base *= 0.88f
             if (player.revenge > 0f) base /= loadout.revengeMul()
+            base *= clamp(1f - loadout.cascadeStep() * player.cascade, 0.4f, 1f)
             player.fireT = base * (if (player.odTime > 0f) 0.55f else 1f)
         }
     }
@@ -966,8 +1028,11 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val ship = s.ship
         val od = player.odTime > 0f
         var d = (if (od) 4 else 2) + loadout.damageBonus() + ship.damageBonus
-        // MOMENTUM rewards flying hard; VENGEANCE rewards having just been hit
+        // MOMENTUM rewards flying hard, FOCUS rewards holding still, and
+        // VENGEANCE rewards having just been hit
+        val still = clamp(1f - player.thrust * 2.5f, 0f, 1f)
         val fury = (1f + loadout.momentumBonus() * player.thrust) *
+            (1f + loadout.focusBonus() * still) *
             (if (player.revenge > 0f) loadout.revengeMul() else 1f)
         if (fury > 1f) d = (d * fury + 0.5f).toInt()
         when (player.weapon) {
@@ -1003,7 +1068,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 val n = 6 + extra
                 for (i in 0 until n) {
                     val ang = -66f + i * (132f / (n - 1))
-                    playerShot(s, 0f, -8f, ang, 3.3f, (d * 0.54f).toInt())
+                    playerShot(s, 0f, -8f, ang, 3.3f, (d * 0.46f).toInt())
                 }
             }
             Aug.B -> { // PHALANX: heavy piercing bolts
@@ -1352,6 +1417,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             }
             PK.SHIELD -> {
                 player.shield = (player.shield + 1).coerceAtMost(loadout.maxShield())
+                player.shieldHits = loadout.shieldDepth()
                 fx.popText(player.x, player.y - 46f, "SHIELD", Palette.LIME, 20f)
                 fx.shockwave(player.x, player.y, 70f, Palette.LIME, 0.4f, 2.5f)
             }
@@ -1362,7 +1428,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             }
             else -> {
                 tally.gems++
-                val v = (200 * multiplier * scoreMultiplier() * (1f + loadout.gemBonus() * 0.5f)).toInt()
+                val v = (200 * multiplier * scoreMultiplier() * meta.gemMul * (1f + loadout.gemBonus() * 0.5f)).toInt()
                 score += v
                 fx.popText(u.x, u.y, "+$v", Palette.AMBER, 16f, 0.7f)
             }
@@ -1410,22 +1476,65 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
     }
 
-    private fun killEnemy(e: Enemy) {
+    /**
+     * How many kills deep the current chain reaction is. AFTERSHOCK damages
+     * neighbours from inside a kill, and those neighbours can die too, so
+     * without a ceiling a dense wave recurses until the stack gives out.
+     */
+    private var killDepth = 0
+
+    /**
+     * A mine or a pod that runs its own fuse out still has to blow up, but it
+     * was not shot down: paying score, combo and weapon progress for it would
+     * turn parking next to a seeder into free progression.
+     */
+    internal fun expire(e: Enemy) = killEnemy(e, credited = false)
+
+    private fun killEnemy(e: Enemy, credited: Boolean = true) {
         e.active = false
+        if (e.kind == EK.POD) {
+            // it always blooms; killing it early only decides where
+            val n = 8 + (wave / 8).coerceAtMost(6)
+            val off = rnd(TAU)
+            for (i in 0 until n) {
+                hostileShot(e.x, e.y, off + i * TAU / n, enemyBulletSpeed() * 0.55f, 4.6f, Palette.LIME, 0)
+            }
+            fx.shockwave(e.x, e.y, 62f, Palette.LIME, 0.4f, 3f)
+        }
         if (e.kind == EK.PYLON && e.link >= 0) {
             val partner = enemies[e.link]
             if (partner.link == enemies.indexOf(e)) partner.link = -1
             e.link = -1
         }
-        kills++
-        killsSinceWeapon++
-        combo++
-        comboT = COMBO_WINDOW
-        if (combo > maxCombo) maxCombo = combo
-        player.overdrive = clamp(player.overdrive + 0.005f, 0f, 1f)
+        if (credited) {
+            kills++
+            killsSinceWeapon++
+            combo++
+            comboT = COMBO_WINDOW
+            if (combo > maxCombo) maxCombo = combo
+            player.overdrive = clamp(player.overdrive + 0.005f, 0f, 1f)
+        }
 
-        val gained = (e.score * multiplier * scoreMultiplier()).toInt()
+        val gained = if (credited) (e.score * multiplier * scoreMultiplier()).toInt() else 0
         score += gained
+
+        if (credited && e.kind != EK.POD && e.kind != EK.MINE) {
+            if (loadout.has(Aug.HARVEST)) arsenal.spillPool(this, e.x, e.y, e.r)
+            val boom = loadout.aftershockChance()
+            if (boom > 0f && killDepth < AFTERSHOCK_CHAIN && chance(boom)) {
+                val r = loadout.aftershockRadius()
+                fx.shockwave(e.x, e.y, r, Palette.RED, 0.45f, 3f)
+                fx.burst(e.x, e.y, 12, Palette.RED, 260f, 2.4f, 0.5f, true)
+                killDepth++
+                splashDamage(e.x, e.y, r, 8f + wave * 1.4f + loadout.damageBonus() * 3f)
+                killDepth--
+            }
+            // CASCADE: a kill briefly speeds the next shot, and it stacks
+            if (loadout.cascadeStep() > 0f) {
+                player.cascade = (player.cascade + 1).coerceAtMost(loadout.cascadeMax())
+                player.cascadeT = 2.2f
+            }
+        }
 
         if (e.kind == EK.BOSS) {
             tally.bosses++
@@ -1451,13 +1560,15 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             fx.burst(e.x, e.y, 8, Palette.WHITE, 180f, 2.2f, 0.35f)
             fx.shockwave(e.x, e.y, e.r * 3.2f, e.color, 0.32f, 2.4f)
             fx.shake(0.07f)
-            fx.popText(e.x, e.y - 12f, "+$gained", if (combo > 8) Palette.AMBER else Palette.WHITE, 15f, 0.6f)
-            sound?.sfx(Sfx.EXPLODE)
-            if (combo > 0 && combo % 10 == 0) {
-                fx.popText(player.x, player.y - 76f, "COMBO x${combo}", Palette.MAGENTA, 22f, 1.1f)
-                haptics.light()
+            if (credited) {
+                fx.popText(e.x, e.y - 12f, "+$gained", if (combo > 8) Palette.AMBER else Palette.WHITE, 15f, 0.6f)
+                if (combo > 0 && combo % 10 == 0) {
+                    fx.popText(player.x, player.y - 76f, "COMBO x${combo}", Palette.MAGENTA, 22f, 1.1f)
+                    haptics.light()
+                }
+                dropLoot(e.x, e.y, e.dropBias, e.elite || e.kind == EK.TURRET || e.kind == EK.MINELAYER)
             }
-            dropLoot(e.x, e.y, e.dropBias, e.elite || e.kind == EK.TURRET || e.kind == EK.MINELAYER)
+            sound?.sfx(Sfx.EXPLODE)
         }
     }
 
@@ -1507,9 +1618,28 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val player = s.player
         val loadout = s.loadout
         player.revenge = loadout.revengeSeconds()
+        // PHANTOM: the mirrored ghost steps in front of one shot
+        if (s.arsenal.mirrorGuard(this)) {
+            player.invuln = 0.9f + loadout.mercyBonus() + meta.mercyBonus
+            fx.shockwave(player.x, player.y, 130f, Palette.VIOLET, 0.5f, 3f)
+            fx.popText(player.x, player.y - 50f, "PHANTOM", Palette.VIOLET, 18f)
+            sound?.sfx(Sfx.HURT)
+            return
+        }
+        if (player.shield > 0 && player.shieldHits > 1) {
+            // BULWARK: this pip has another hit left in it
+            player.shieldHits--
+            player.invuln = 1.0f + loadout.mercyBonus() + meta.mercyBonus
+            fx.shockwave(player.x, player.y, 90f, Palette.LIME, 0.4f, 2.5f)
+            fx.popText(player.x, player.y - 50f, "SHIELD HOLDS", Palette.LIME, 16f)
+            sound?.sfx(Sfx.HURT)
+            haptics.light()
+            return
+        }
         if (player.shield > 0) {
             player.shield--
-            player.invuln = 1.4f + loadout.mercyBonus()
+            player.shieldHits = loadout.shieldDepth()
+            player.invuln = 1.4f + loadout.mercyBonus() + meta.mercyBonus
             fx.shockwave(player.x, player.y, 110f, Palette.LIME, 0.5f, 3f)
             fx.burst(player.x, player.y, 20, Palette.LIME, 280f, 2.6f, 0.5f, true)
             fx.flash(Palette.LIME, 0.22f)
@@ -1523,7 +1653,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         if (player.lives <= 1 && revives > 0) {
             // EMERGENCY CORE: one comeback per run instead of the last life
             revives--
-            player.invuln = 3f + loadout.mercyBonus()
+            player.invuln = 3f + loadout.mercyBonus() + meta.mercyBonus
             player.shield = loadout.maxShield()
             clearHostileBullets(false)
             fx.shockwave(player.x, player.y, w * 1.2f, Palette.WHITE, 0.7f, 5f)
@@ -1571,6 +1701,17 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
     fun draw(c: Canvas) {
         for (u in pickups) if (u.active) Draw.powerUp(c, u)
         for (e in enemies) if (e.active && e.kind == EK.LANCER) Draw.lancerTelegraph(c, e, h)
+        for (e in enemies) {
+            if (!e.active) continue
+            when (e.kind) {
+                EK.HOWLER -> Draw.howlerTelegraph(c, e, time)
+                EK.POD -> Draw.podTelegraph(c, e, time)
+                EK.MENDER -> {
+                    val t = e.link
+                    if (t in enemies.indices && enemies[t].active) Draw.menderBeam(c, e, enemies[t], time)
+                }
+            }
+        }
         for (i in enemies.indices) {
             val a = enemies[i]
             if (!a.active || a.kind != EK.PYLON || a.link <= i) continue
@@ -1667,7 +1808,10 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             e.x = s.enemyX[i]; e.y = s.enemyY[i]; e.r = s.enemyR[i]
             e.kind = s.enemyKind[i]; e.angle = s.enemyAngle[i]
             e.hitFlash = s.enemyFlash[i]; e.elite = s.enemyElite[i]; e.color = s.enemyColor[i]
-            e.link = -1; e.telegraph = 0f; e.burn = 0f; e.burnDps = 0f
+            e.telegraph = s.enemyTelegraph[i]
+            // the host renumbered links into this list, so they index straight in
+            e.link = s.enemyLink[i].let { if (it in 0 until s.enemyCount) it else -1 }
+            e.burn = 0f; e.burnDps = 0f
         }
         for (u in pickups) u.active = false
         for (i in 0 until minOf(s.pickupCount, pickups.size)) {

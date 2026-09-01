@@ -215,6 +215,50 @@ class Synth(private val rate: Int = 22050) {
                 Section(intArrayOf(16, 14, 12, 10, 12, 14, 16, 17, 16, 14, 12, 10, 7, 3, 0, -1), bassDriving, hardBeat, 2)
             ),
             leadWave = Wave.SAW, bassWave = Wave.SAW, arpWave = Wave.SQUARE
+        ),
+        // 11 STORM LINE - restless, with the lead cracking overhead
+        Song(
+            bpm = 150f, root = 41, chords = intArrayOf(0, 3, -2, 5),
+            sections = arrayOf(
+                Section(intArrayOf(0, -1, 3, 5, -1, 3, 7, -1, 5, 3, -1, 0, 3, -1, 7, 5), bassPulse, drivingBeat, 2),
+                Section(intArrayOf(7, 10, 12, 10, 7, 5, 3, 5, 7, 10, 12, 14, 12, 10, 7, 5), bassDriving, hardBeat, 2),
+                Section(intArrayOf(0, 0, 7, 7, 3, 3, 10, 10, 5, 5, 12, 12, 7, 3, 0, -1), bassOctave, drivingBeat, 1),
+                Section(intArrayOf(14, 12, 10, 7, 10, 12, 14, 17, 14, 12, 10, 7, 5, 3, 0, 3), bassDriving, hardBeat, 2)
+            ),
+            leadWave = Wave.SQUARE, bassWave = Wave.SAW, arpWave = Wave.SAW
+        ),
+        // 12 TIDAL REEF - buoyant, drifting, a long swell
+        Song(
+            bpm = 118f, root = 43, chords = intArrayOf(0, 5, 3, -4),
+            sections = arrayOf(
+                Section(intArrayOf(0, -1, 2, -1, 5, -1, 7, -1, 5, -1, 2, -1, 0, -1, -1, 2), bassSlow, sparseBeat, 1),
+                Section(intArrayOf(7, 9, 7, 5, 3, 5, 7, 9, 12, 9, 7, 5, 3, 2, 0, -1), bassStraight, fourFloor, 2),
+                Section(intArrayOf(0, 3, 5, 7, 9, 7, 5, 3, 0, 3, 5, 9, 12, 9, 5, 3), bassOctave, fourFloor, 2),
+                Section(intArrayOf(12, -1, 9, -1, 7, 9, 12, 14, 12, -1, 9, 7, 5, 3, 2, 0), bassSlow, drivingBeat, 1)
+            ),
+            leadWave = Wave.TRI, bassWave = Wave.TRI, arpWave = Wave.SQUARE
+        ),
+        // 13 THE BONEYARD - heavy, dragging, unwilling
+        Song(
+            bpm = 108f, root = 34, chords = intArrayOf(0, -2, 3, -4),
+            sections = arrayOf(
+                Section(intArrayOf(0, -1, -1, 3, -1, -1, -1, 0, -1, 3, -1, -1, 5, -1, 3, -1), bassSlow, sparseBeat, 0),
+                Section(intArrayOf(3, -1, 5, -1, 7, -1, 5, 3, 0, -1, 3, -1, 5, 7, -1, 5), bassStraight, sparseBeat, 1),
+                Section(intArrayOf(7, 5, 3, 0, 3, 5, 7, 10, 7, 5, 3, 0, -1, 3, 5, 7), bassOctave, fourFloor, 2),
+                Section(intArrayOf(10, -1, 7, -1, 5, 3, 5, 7, 10, 12, 10, 7, 5, 3, 0, -1), bassDriving, drivingBeat, 1)
+            ),
+            leadWave = Wave.SAW, bassWave = Wave.SAW, arpWave = Wave.TRI
+        ),
+        // 14 AURORA GATE - the last light, and it is beautiful and fast
+        Song(
+            bpm = 168f, root = 45, chords = intArrayOf(0, 7, 3, 5),
+            sections = arrayOf(
+                Section(intArrayOf(0, 3, 7, 12, 7, 3, 7, 12, 14, 12, 7, 3, 0, 3, 7, 12), bassDriving, hardBeat, 2),
+                Section(intArrayOf(12, 14, 16, 14, 12, 7, 12, 14, 16, 19, 16, 14, 12, 7, 3, 0), bassOctave, hardBeat, 2),
+                Section(intArrayOf(0, -1, 7, -1, 12, -1, 7, -1, 3, -1, 10, -1, 14, 12, 7, 3), bassPulse, drivingBeat, 1),
+                Section(intArrayOf(19, 16, 14, 12, 14, 16, 19, 21, 19, 16, 14, 12, 7, 3, 0, 7), bassDriving, hardBeat, 2)
+            ),
+            leadWave = Wave.SQUARE, bassWave = Wave.SAW, arpWave = Wave.SQUARE
         )
     )
 

@@ -23,12 +23,18 @@ object EK {
     const val WISP = 12
     const val CARRIER = 13
     const val PYLON = 14
-    const val COUNT = 15
+    const val STALKER = 15
+    const val HOWLER = 16
+    const val SEEDER = 17
+    const val MENDER = 18
+    const val POD = 19
+    const val COUNT = 20
 
     val displayNames = arrayOf(
         "DRIFTER", "WEAVER", "CHARGER", "TURRET", "BOSS",
         "LANCER", "ORBITER", "SPLITTER", "MINELAYER", "SWARMER", "MINE",
-        "SHIELDER", "WISP", "CARRIER", "PYLON"
+        "SHIELDER", "WISP", "CARRIER", "PYLON",
+        "STALKER", "HOWLER", "SEEDER", "MENDER", "POD"
     )
 }
 
@@ -131,6 +137,9 @@ class Player {
     var shipId = 0
     var hitR = 5.5f                   // small hitbox: grazing is the point
     var revenge = 0f                  // seconds of VENGEANCE fury left
+    var cascade = 0                   // CASCADE stacks from recent kills
+    var cascadeT = 0f
+    var shieldHits = 1                // hits the current shield pip absorbs
     var regenT = 0f                   // countdown to the next regrown shield
     val bodyR = 15f
 }
@@ -185,6 +194,70 @@ object Shapes {
         }
         close()
     }
+    /** STALKER: a narrow dart, all forward, with swept-back barbs. */
+    val stalker: Path = Path().apply {
+        moveTo(0f, 1.3f)
+        lineTo(0.30f, 0.10f)
+        lineTo(0.80f, -0.55f)
+        lineTo(0.34f, -0.42f)
+        lineTo(0.16f, -0.95f)
+        lineTo(-0.16f, -0.95f)
+        lineTo(-0.34f, -0.42f)
+        lineTo(-0.80f, -0.55f)
+        lineTo(-0.30f, 0.10f)
+        close()
+    }
+
+    /** HOWLER: a wide open horn, the mouth facing you. */
+    val howler: Path = Path().apply {
+        moveTo(0f, 0.55f)
+        lineTo(0.95f, 0.85f)
+        lineTo(1.05f, 0.10f)
+        lineTo(0.55f, -0.55f)
+        lineTo(0f, -0.75f)
+        lineTo(-0.55f, -0.55f)
+        lineTo(-1.05f, 0.10f)
+        lineTo(-0.95f, 0.85f)
+        close()
+    }
+
+    /** SEEDER: a bulbous carrier with a split underside. */
+    val seeder: Path = Path().apply {
+        moveTo(0f, 0.95f)
+        lineTo(0.52f, 0.60f)
+        lineTo(0.90f, -0.10f)
+        lineTo(0.60f, -0.80f)
+        lineTo(0.20f, -0.45f)
+        lineTo(-0.20f, -0.45f)
+        lineTo(-0.60f, -0.80f)
+        lineTo(-0.90f, -0.10f)
+        lineTo(-0.52f, 0.60f)
+        close()
+    }
+
+    /** MENDER: a cross-braced support frame. */
+    val mender: Path = Path().apply {
+        moveTo(0f, 1.0f)
+        lineTo(0.42f, 0.42f)
+        lineTo(1.0f, 0f)
+        lineTo(0.42f, -0.42f)
+        lineTo(0f, -1.0f)
+        lineTo(-0.42f, -0.42f)
+        lineTo(-1.0f, 0f)
+        lineTo(-0.42f, 0.42f)
+        close()
+    }
+
+    /** POD: the seed a seeder drops, before it blooms. */
+    val pod: Path = Path().apply {
+        moveTo(0f, 1f)
+        lineTo(0.72f, 0.30f)
+        lineTo(0.45f, -0.85f)
+        lineTo(-0.45f, -0.85f)
+        lineTo(-0.72f, 0.30f)
+        close()
+    }
+
     val boss: Path = Path().apply {
         moveTo(0f, 1.0f)
         lineTo(0.55f, 0.45f)
@@ -410,6 +483,11 @@ object Draw {
             EK.WISP -> Shapes.wisp
             EK.CARRIER -> Shapes.carrier
             EK.PYLON -> Shapes.pylon
+            EK.STALKER -> Shapes.stalker
+            EK.HOWLER -> Shapes.howler
+            EK.SEEDER -> Shapes.seeder
+            EK.MENDER -> Shapes.mender
+            EK.POD -> Shapes.pod
             else -> Shapes.boss
         }
         Neon.fillPath(c, shape, fade(col, 0.24f))
@@ -434,7 +512,18 @@ object Draw {
         c.restore()
 
         if (e.elite) {
-            Neon.ring(c, e.x, e.y, s * 1.5f, fade(Palette.WHITE, 0.35f + 0.2f * sin(timeNow * 4f)), 1.4f, 0.8f)
+            val a2 = 0.35f + 0.2f * sin(timeNow * 4f)
+            Neon.ring(c, e.x, e.y, s * 1.5f, fade(Palette.WHITE, a2), 1.4f, 0.8f)
+            // three ticks turning round the halo, so an elite is unmistakable
+            for (i in 0 until 3) {
+                val ang = timeNow * 1.6f + i * TAU / 3f
+                val r0 = s * 1.5f
+                Neon.line(
+                    c, e.x + cos(ang) * r0, e.y + sin(ang) * r0,
+                    e.x + cos(ang) * (r0 + 5f), e.y + sin(ang) * (r0 + 5f),
+                    fade(Palette.WHITE, a2 + 0.2f), 2f, 0.7f
+                )
+            }
         }
         if (e.kind == EK.CHARGER && e.state == 1) {
             // telegraph: locked-on glow before the dive
@@ -515,6 +604,27 @@ object Draw {
                 Neon.ring(c, 0f, 0f, 0.52f, dim, line * 1.2f, 0.4f)
                 Neon.ring(c, 0f, 0f, 0.30f, fade(hot, 0.6f), line, 0.4f)
             }
+            EK.STALKER -> {
+                Neon.hairline(c, 0f, 1.15f, 0f, -0.70f, fade(hot, 0.8f), line * 1.4f)
+                Neon.hairline(c, -0.52f, -0.40f, -0.22f, 0.16f, dim, line)
+                Neon.hairline(c, 0.52f, -0.40f, 0.22f, 0.16f, dim, line)
+            }
+            EK.HOWLER -> {
+                // concentric mouth rings, the shape it fires
+                Neon.ring(c, 0f, 0.20f, 0.34f, dim, line * 1.2f, 0.4f)
+                Neon.ring(c, 0f, 0.20f, 0.60f, fade(dim, 0.6f), line, 0.3f)
+                Neon.hairline(c, -0.80f, 0.55f, 0.80f, 0.55f, dim, line)
+            }
+            EK.SEEDER -> {
+                Neon.hairline(c, -0.55f, -0.35f, 0.55f, -0.35f, dim, line * 1.3f)
+                Neon.hairline(c, 0f, -0.35f, 0f, -0.72f, fade(Palette.LIME, 0.7f), line * 1.4f)
+                Neon.ring(c, 0f, 0.25f, 0.34f, dim, line, 0.35f)
+            }
+            EK.MENDER -> {
+                Neon.hairline(c, -0.62f, 0f, 0.62f, 0f, fade(Palette.LIME, 0.8f), line * 1.5f)
+                Neon.hairline(c, 0f, -0.62f, 0f, 0.62f, fade(Palette.LIME, 0.8f), line * 1.5f)
+            }
+            EK.POD -> Neon.ring(c, 0f, 0f, 0.42f, fade(hot, 0.7f), line * 1.2f, 0.4f)
             EK.BOSS -> {
                 Neon.hairline(c, -1.0f, 0f, 1.0f, 0f, dim, line * 1.6f)
                 Neon.hairline(c, -0.42f, 0.72f, -0.42f, -0.70f, dim, line * 1.2f)
@@ -524,7 +634,7 @@ object Draw {
         }
 
         // a lit cockpit on anything that reads as a craft
-        if (e.kind != EK.MINE && e.kind != EK.PYLON && e.kind != EK.TURRET) {
+        if (e.kind != EK.MINE && e.kind != EK.PYLON && e.kind != EK.TURRET && e.kind != EK.POD) {
             val glow = 0.6f + 0.4f * sin(timeNow * 4f + e.seedPhase())
             Neon.orb(c, 0f, 0.34f, 0.13f, fade(lighten(col, 0.75f), 0.85f * glow), 0.8f)
         }
@@ -576,6 +686,42 @@ object Draw {
         if (live) Neon.line(c, a.x, a.y, b.x, b.y, fade(Palette.WHITE, 0.7f), 1.2f, 0.6f)
     }
 
+    /**
+     * The beam a mender holds on whatever it is repairing. Without it the
+     * player has no way to see why something has stopped dying.
+     */
+    fun menderBeam(c: Canvas, a: Enemy, b: Enemy, timeNow: Float) {
+        val pulse = 0.55f + 0.45f * sin(timeNow * 9f + a.seedPhase())
+        Neon.line(c, a.x, a.y, b.x, b.y, fade(Palette.LIME, 0.30f * pulse), 4.5f, 0.8f)
+        Neon.line(c, a.x, a.y, b.x, b.y, fade(Palette.WHITE, 0.55f * pulse), 1.4f, 0.5f)
+        // beads running along the beam towards the patient
+        val d = len(b.x - a.x, b.y - a.y)
+        if (d < 1f) return
+        val n = (d / 26f).toInt().coerceIn(1, 8)
+        for (i in 0 until n) {
+            val t = ((timeNow * 0.9f + i.toFloat() / n) % 1f)
+            Neon.orb(c, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, 2.4f, fade(Palette.LIME, 0.8f), 0.9f)
+        }
+        Neon.ring(c, b.x, b.y, b.r * 1.35f, fade(Palette.LIME, 0.35f * pulse), 1.6f, 0.7f)
+    }
+
+    /** A howler winding up: the ring it is about to throw, drawn as a warning. */
+    fun howlerTelegraph(c: Canvas, e: Enemy, timeNow: Float) {
+        if (e.kind != EK.HOWLER || e.telegraph <= 0f) return
+        val t = clamp(e.telegraph, 0f, 1f)
+        val r = e.r * (1.6f + 5.5f * t)
+        Neon.ring(c, e.x, e.y, r, fade(Palette.AMBER, 0.10f + 0.30f * t), 1.6f + 2f * t, 0.8f)
+        Neon.ring(c, e.x, e.y, r * 0.6f, fade(Palette.AMBER, 0.16f * t), 1.2f, 0.5f)
+    }
+
+    /** A pod about to bloom. The last half-second is the one that matters. */
+    fun podTelegraph(c: Canvas, e: Enemy, timeNow: Float) {
+        if (e.kind != EK.POD || e.telegraph <= 0f) return
+        val t = clamp(e.telegraph, 0f, 1f)
+        val flick = 0.5f + 0.5f * sin(timeNow * (12f + 20f * t))
+        Neon.ring(c, e.x, e.y, e.r * (1.4f + 1.8f * t), fade(Palette.LIME, 0.35f * t * flick), 1.8f, 0.8f)
+    }
+
     /** The wind-up beam a lancer shows before it fires. */
     fun lancerTelegraph(c: Canvas, e: Enemy, screenH: Float) {
         if (e.telegraph <= 0f) return
@@ -586,6 +732,14 @@ object Draw {
     }
 
     fun bullet(c: Canvas, b: Bullet) {
+        // a short wake along the flight path: it reads as speed and makes a
+        // dense screen easier to parse than a field of identical dots
+        val n0 = len(b.vx, b.vy)
+        if (n0 > 1f && b.style != 1) {
+            val ux = b.vx / n0
+            val uy = b.vy / n0
+            Neon.softDisc(c, b.x - ux * b.r * 1.9f, b.y - uy * b.r * 1.9f, b.r * 0.9f, fade(b.color, 0.18f))
+        }
         when (b.style) {
             1 -> {
                 val n = len(b.vx, b.vy)
@@ -605,7 +759,10 @@ object Draw {
                 Neon.orb(c, b.x, b.y, b.r, b.color, 1.1f)
                 if (b.splash > 0f) Neon.ring(c, b.x, b.y, b.r * 1.9f, fade(Palette.WHITE, 0.55f), 1.3f, 0.6f)
             }
-            else -> Neon.orb(c, b.x, b.y, b.r, b.color, 1f)
+            else -> {
+                Neon.orb(c, b.x, b.y, b.r, b.color, 1f)
+                Neon.softDisc(c, b.x, b.y, b.r * 0.42f, fade(Palette.WHITE, 0.55f))
+            }
         }
     }
 

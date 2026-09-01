@@ -10,7 +10,7 @@ import java.io.DataOutputStream
  * imports so the whole protocol can be exercised headlessly.
  */
 object Proto {
-    const val VERSION = 1
+    const val VERSION = 2
     const val PORT = 47653
     const val SERVICE_TYPE = "_neonvoid._tcp"
 
@@ -107,6 +107,10 @@ class Snapshot {
     val enemyFlash = FloatArray(World.ENEMY_CAP)
     val enemyElite = BooleanArray(World.ENEMY_CAP)
     val enemyColor = IntArray(World.ENEMY_CAP)
+    /** Wind-up timer, so the client can draw the same tells the host does. */
+    val enemyTelegraph = FloatArray(World.ENEMY_CAP)
+    /** Index into this snapshot's own enemy list, or -1. Mender beams. */
+    val enemyLink = IntArray(World.ENEMY_CAP)
 
     var pickupCount = 0
     val pickupX = FloatArray(32)
@@ -121,6 +125,9 @@ class Snapshot {
 }
 
 object Codec {
+
+    /** Scratch used to renumber enemy links; the host writes snapshots alone. */
+    private val compact = IntArray(World.ENEMY_CAP)
 
     // ------------------------------------------------------------- handshake
 
@@ -207,8 +214,12 @@ object Codec {
             o.writeInt(b.color)
         }
 
+        // Links are host-array indices, but only live enemies go on the wire,
+        // so they have to be renumbered into the compacted list the client sees.
         n = 0
-        for (e in w.enemies) if (e.active) n++
+        for (i in w.enemies.indices) {
+            compact[i] = if (w.enemies[i].active) n++ else -1
+        }
         o.writeShort(n)
         for (e in w.enemies) {
             if (!e.active) continue
@@ -220,6 +231,9 @@ object Codec {
             o.writeByte((e.hitFlash * 100f).toInt().coerceIn(0, 127))
             o.writeBoolean(e.elite)
             o.writeInt(e.color)
+            o.writeByte((e.telegraph * 250f).toInt().coerceIn(0, 250))
+            val link = if (e.link in w.enemies.indices) compact[e.link] else -1
+            o.writeByte(link.coerceIn(-1, 127))
         }
 
         n = w.pickupSnapshotCount()
@@ -290,6 +304,8 @@ object Codec {
             into.enemyFlash[k] = i.readUnsignedByte() / 100f
             into.enemyElite[k] = i.readBoolean()
             into.enemyColor[k] = i.readInt()
+            into.enemyTelegraph[k] = i.readUnsignedByte() / 250f
+            into.enemyLink[k] = i.readByte().toInt()
         }
 
         into.pickupCount = i.readUnsignedShort().coerceAtMost(32)

@@ -36,7 +36,143 @@ object EnemyAI {
             EK.WISP -> wisp(w, e, dt)
             EK.CARRIER -> carrier(w, e, dt)
             EK.PYLON -> pylon(w, e, dt)
+            EK.STALKER -> stalker(w, e, dt)
+            EK.HOWLER -> howler(w, e, dt)
+            EK.SEEDER -> seeder(w, e, dt)
+            EK.MENDER -> mender(w, e, dt)
+            EK.POD -> pod(w, e, dt)
             EK.BOSS -> BossAI.update(w, e, dt)
+        }
+    }
+
+    // ------------------------------------------------------- newer cast
+
+    /**
+     * Holds station directly above you and fires straight down. Standing still
+     * is the one thing that cannot work, so it keeps the ship moving.
+     */
+    private fun stalker(w: World, e: Enemy, dt: Float) {
+        if (e.state == 0) {
+            e.y += e.vy * dt
+            if (e.y >= e.holdY) { e.state = 1; e.fireT = 0.9f }
+            return
+        }
+        // slide towards the pilot's lane, but slowly enough to be outrun
+        val want = if (w.player.alive) w.player.x else w.w * 0.5f
+        e.x = approach(e.x, clamp(want, 26f, w.w - 26f), 0.035f, dt)
+        e.y += sin(e.t * 1.4f) * 12f * dt
+        e.angle = clamp((want - e.x) * 0.12f, -18f, 18f)
+        e.fireT -= dt
+        if (e.fireT <= 0f) {
+            val n = if (e.elite) 3 else 2
+            for (i in 0 until n) {
+                w.hostileShot(
+                    e.x + (i - (n - 1) * 0.5f) * 9f, e.y + e.r * 0.6f,
+                    TAU * 0.25f, w.enemyBulletSpeed() * 1.15f, 5f, Palette.RED, 1
+                )
+            }
+            e.fireT = e.fireEvery
+        }
+    }
+
+    /**
+     * Fires a ring of shots with one gap in it. The wall has to be read and
+     * flown through rather than simply dodged sideways.
+     */
+    private fun howler(w: World, e: Enemy, dt: Float) {
+        if (e.state == 0) {
+            e.y += e.vy * dt
+            if (e.y >= e.holdY) { e.state = 1; e.fireT = 1.6f }
+            return
+        }
+        e.x = e.baseX + sin(e.t * e.freq * 0.6f) * e.amp
+        e.y += sin(e.t * 0.5f) * 6f * dt
+        // the wind-up tells you a wall is coming, and where the gap will be
+        e.telegraph = clamp(1f - e.fireT / 0.9f, 0f, 1f)
+        e.fireT -= dt
+        if (e.fireT <= 0f) {
+            val n = if (e.elite) 20 else 15
+            // the gap tracks the pilot, so it is always reachable
+            val toward = if (w.player.alive) Draw.aimAngle(e.x, e.y, w.player.x, w.player.y) else TAU * 0.25f
+            for (i in 0 until n) {
+                val a = toward + (i + 0.5f) * TAU / n
+                // leave two slots empty around the pilot's bearing
+                if (i < 1 || i > n - 2) continue
+                w.hostileShot(e.x, e.y, a, w.enemyBulletSpeed() * 0.62f, 5.5f, Palette.AMBER, 0)
+            }
+            w.fx.shockwave(e.x, e.y, e.r * 2.4f, Palette.AMBER, 0.4f, 3f)
+            e.fireT = e.fireEvery
+            e.telegraph = 0f
+        }
+    }
+
+    /** Drops pods that drift down and bloom into a burst where they stop. */
+    private fun seeder(w: World, e: Enemy, dt: Float) {
+        if (e.state == 0) {
+            e.y += e.vy * dt
+            if (e.y >= e.holdY) { e.state = 1; e.fireT = 1.2f }
+            return
+        }
+        e.x += e.vx * dt
+        if (e.x < 44f || e.x > w.w - 44f) e.vx = -e.vx
+        e.y += sin(e.t * 0.7f) * 8f * dt
+        e.fireT -= dt
+        if (e.fireT <= 0f) {
+            // the field has a ceiling, or a row of seeders buries the screen
+            val n = if (w.countActive(EK.POD) >= 8) 0 else if (e.elite) 2 else 1
+            for (i in 0 until n) {
+                val m = w.spawnMinion(EK.POD, e.x + (i - (n - 1) * 0.5f) * 22f, e.y + e.r * 0.7f)
+                if (m != null) m.stateT = rnd(1.5f, 2.3f)
+            }
+            w.fx.burst(e.x, e.y + e.r * 0.7f, 6, Palette.LIME, 120f, 1.8f, 0.35f)
+            e.fireT = e.fireEvery
+        }
+    }
+
+    /** A seeder's pod: drifts, then bursts outward. Shooting it early is free. */
+    private fun pod(w: World, e: Enemy, dt: Float) {
+        e.y += e.vy * dt
+        e.angle += 90f * dt
+        e.stateT -= dt
+        e.telegraph = clamp(1f - e.stateT / 0.6f, 0f, 1f)
+        if (e.stateT <= 0f) w.expire(e)                        // the bloom is on death
+    }
+
+    /**
+     * Repairs whatever is nearest. It has no gun of its own, so the question it
+     * poses is one of priority: shoot the thing hurting you, or the thing
+     * undoing your work.
+     */
+    private fun mender(w: World, e: Enemy, dt: Float) {
+        if (e.state == 0) {
+            e.y += e.vy * dt
+            if (e.y >= e.holdY) { e.state = 1; e.fireT = 0.6f }
+            return
+        }
+        e.x += e.vx * dt
+        if (e.x < 40f || e.x > w.w - 40f) e.vx = -e.vx
+        e.y += sin(e.t * 0.9f) * 9f * dt
+        e.angle += 40f * dt
+
+        // find the most hurt thing in range that is not another mender
+        var best: Enemy? = null
+        var bestGap = 0f
+        for (o in w.enemies) {
+            // never a boss: a boss fight has its own clock and a healer would
+            // fight it, and never another mender or a projectile
+            if (!o.active || o === e) continue
+            if (o.kind == EK.MENDER || o.kind == EK.POD || o.kind == EK.MINE || o.kind == EK.BOSS) continue
+            if (len(o.x - e.x, o.y - e.y) > 190f) continue
+            val gap = o.maxHp - o.hp
+            if (gap > bestGap) { bestGap = gap; best = o }
+        }
+        e.link = -1
+        val target = best ?: return
+        e.link = w.enemies.indexOf(target)
+        val heal = (2.5f + w.wave * 0.25f) * dt
+        target.hp = (target.hp + heal).coerceAtMost(target.maxHp)
+        if (chance(dt * 8f)) {
+            w.fx.burst(target.x + rnd(-target.r, target.r), target.y, 1, Palette.LIME, 70f, 1.6f, 0.4f)
         }
     }
 
@@ -263,9 +399,10 @@ object EnemyAI {
         e.angle += 30f * dt
         e.stateT -= dt
         val close = w.player.alive && len(w.player.x - e.x, w.player.y - e.y) < 78f
-        if (e.stateT <= 0f || close) {
-            w.hit(e, 9999f, e.x, e.y, false)     // detonation is handled on death
-        }
+        // A mine the pilot flew into is theirs; one that simply timed out is
+        // not, so only the first pays out.
+        if (close) w.hit(e, 9999f, e.x, e.y, false)
+        else if (e.stateT <= 0f) w.expire(e)     // detonation is handled on death
     }
 
     /** Holds a plate towards the player; shots have to come from the flank. */

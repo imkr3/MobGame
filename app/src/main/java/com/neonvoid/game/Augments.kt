@@ -23,31 +23,38 @@ object Aug {
     const val CHRONO = 11
     const val RICOCHET = 12
     const val FRACTURE = 13
-    const val ABILITIES = 14
+    const val HARVEST = 14
+    const val MIRROR = 15
+    const val QUAKE = 16
+    const val ABILITIES = 17
 
     // stat modules
-    const val RAPID = 14
-    const val POWER = 15
-    const val VELOCITY = 16
-    const val AGILITY = 17
-    const val MAGNET = 18
-    const val GRAZE = 19
-    const val ARMOR = 20
-    const val SALVAGE = 21
-    const val REPAIR = 22
-    const val COOLANT = 23
-    const val PIERCE = 24
-    const val CRIT = 25
-    const val RECLAIM = 26
-    const val HARDPOINT = 27
-    const val EVASION = 28
-    const val BOUNTY = 29
-    const val MOMENTUM = 30
-    const val VENGEANCE = 31
-    const val OVERCLOCK = 32
-    const val AFTERBURN = 33
-    const val RECOVERY = 34
-    const val COUNT = 35
+    const val RAPID = 17
+    const val POWER = 18
+    const val VELOCITY = 19
+    const val AGILITY = 20
+    const val MAGNET = 21
+    const val GRAZE = 22
+    const val ARMOR = 23
+    const val SALVAGE = 24
+    const val REPAIR = 25
+    const val COOLANT = 26
+    const val PIERCE = 27
+    const val CRIT = 28
+    const val RECLAIM = 29
+    const val HARDPOINT = 30
+    const val EVASION = 31
+    const val BOUNTY = 32
+    const val MOMENTUM = 33
+    const val VENGEANCE = 34
+    const val OVERCLOCK = 35
+    const val AFTERBURN = 36
+    const val RECOVERY = 37
+    const val FOCUS = 38
+    const val CASCADE = 39
+    const val BULWARK = 40
+    const val AFTERSHOCK = 41
+    const val COUNT = 42
 
     /** Abilities cap at 3 before they must evolve, then run to 5 down the chosen branch. */
     const val BASE_MAX = 3
@@ -69,34 +76,38 @@ object Aug {
 
     val names = arrayOf(
         "SPREAD", "LANCE", "SWARM", "ORBIT", "ARC", "PULSE", "FLAK", "TETHER", "WING",
-        "VORTEX", "SENTINEL", "CHRONO", "RICOCHET", "FRACTURE",
+        "VORTEX", "SENTINEL", "CHRONO", "RICOCHET", "FRACTURE", "HARVEST", "MIRROR", "QUAKE",
         "RAPID", "POWER", "VELOCITY", "AGILITY", "MAGNET", "GRAZE", "ARMOR", "SALVAGE",
         "REPAIR", "COOLANT", "PIERCE", "CRIT", "RECLAIM", "HARDPOINT", "EVASION", "BOUNTY",
-        "MOMENTUM", "VENGEANCE", "OVERCLOCK", "AFTERBURN", "RECOVERY"
+        "MOMENTUM", "VENGEANCE", "OVERCLOCK", "AFTERBURN", "RECOVERY",
+        "FOCUS", "CASCADE", "BULWARK", "AFTERSHOCK"
     )
 
     val statMax = intArrayOf(
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         5, 4, 3, 3, 3, 3, 2, 3, 2, 3, 2, 3, 3, 2, 3, 3,
-        3, 3, 3, 3, 3
+        3, 3, 3, 3, 3,
+        3, 3, 2, 3
     )
 
     val colors = intArrayOf(
         Palette.CYAN, Palette.VIOLET, Palette.LIME, Palette.AMBER, Palette.SKY, Palette.MAGENTA,
         Palette.RED, Palette.ROSE, Palette.WHITE, Palette.VIOLET, Palette.SKY,
-        Palette.SKY, Palette.LIME, Palette.ROSE,
+        Palette.SKY, Palette.LIME, Palette.ROSE, Palette.LIME, Palette.WHITE, Palette.AMBER,
         Palette.CYAN, Palette.RED, Palette.SKY, Palette.LIME, Palette.AMBER, Palette.MAGENTA,
         Palette.LIME, Palette.AMBER, Palette.ROSE, Palette.SKY, Palette.VIOLET, Palette.RED,
         Palette.CYAN, Palette.WHITE, Palette.LIME, Palette.AMBER,
-        Palette.CYAN, Palette.RED, Palette.AMBER, Palette.RED, Palette.LIME
+        Palette.CYAN, Palette.RED, Palette.AMBER, Palette.RED, Palette.LIME,
+        Palette.SKY, Palette.MAGENTA, Palette.LIME, Palette.RED
     )
 
     /** Three-letter badge codes for the HUD. */
     val codes = arrayOf(
         "SPR", "LNC", "SWM", "ORB", "ARC", "PLS", "FLK", "TTH", "WNG", "VTX", "SNT",
-        "CHR", "RIC", "FRC",
+        "CHR", "RIC", "FRC", "HRV", "MIR", "QKE",
         "RPD", "PWR", "VEL", "AGI", "MAG", "GRZ", "ARM", "SLV", "REP", "COL", "PRC", "CRT",
-        "RCL", "HRD", "EVA", "BTY", "MOM", "VNG", "OVC", "AFB", "RCV"
+        "RCL", "HRD", "EVA", "BTY", "MOM", "VNG", "OVC", "AFB", "RCV",
+        "FCS", "CSC", "BWK", "AFS"
     )
 
     val branchNames = arrayOf(
@@ -113,7 +124,10 @@ object Aug {
         arrayOf("BATTERY", "MORTAR"),
         arrayOf("STASIS", "BACKLASH"),
         arrayOf("CAROM", "DEMOLISHER"),
-        arrayOf("SHATTER", "RUPTURE")
+        arrayOf("SHATTER", "RUPTURE"),
+        arrayOf("PYRE", "BLOOM"),
+        arrayOf("TWIN", "PHANTOM"),
+        arrayOf("FAULT", "TREMOR")
     )
 
     private val abilityBlurb = arrayOf(
@@ -130,7 +144,10 @@ object Aug {
         "Drops a turret that holds position and fires.",
         "A time field around you drags enemy fire to a crawl.",
         "A heavy orb bounces around the screen, mauling anything it meets.",
-        "Your main gun shots shatter into shards on impact."
+        "Your main gun shots shatter into shards on impact.",
+        "Everything you kill leaves a burning pool where it fell.",
+        "A mirrored ghost of your ship fires with you from the far side.",
+        "A shockwave rolls up the screen from beneath you."
     )
 
     private val branchBlurb = arrayOf(
@@ -156,11 +173,23 @@ object Aug {
         arrayOf(
             "Many more shards, thrown far wider.",
             "Fewer shards, but heavy ones that seek a target."
+        ),
+        arrayOf(
+            "Pools burn far hotter and spread as they are fed.",
+            "Pools drag pickups in and pay out as score."
+        ),
+        arrayOf(
+            "Two ghosts, mirrored and offset, both firing.",
+            "One ghost that also eats a shot meant for you."
+        ),
+        arrayOf(
+            "Two waves, one behind the other, the whole width.",
+            "One slow wall that grinds up the screen and holds."
         )
     )
 
     private val statBlurb = arrayOf(
-        "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
         "+10% fire rate.",
         "+1 damage on every shot.",
         "+15% projectile speed.",
@@ -181,7 +210,11 @@ object Aug {
         "Taking a hit leaves you furious: +25% damage and fire rate for 5s.",
         "+20% longer overdrive, and it charges 20% faster.",
         "Main gun hits set the target alight.",
-        "A spent shield grows back on its own."
+        "A spent shield grows back on its own.",
+        "+16% damage while you hold still. Reward for standing your ground.",
+        "Every kill speeds the next shot. It stacks, and it decays.",
+        "Each shield soaks two hits instead of one.",
+        "A kill can take its neighbours with it."
     )
     fun isAbility(id: Int): Boolean = id < ABILITIES
 
@@ -207,6 +240,9 @@ object Aug {
             WING -> "Level $nextLevel: wingmen fire faster."
             VORTEX -> "Level $nextLevel: wider pull, harder bite."
             SENTINEL -> "Level $nextLevel: the turret lasts longer."
+            HARVEST -> "Level $nextLevel: bigger pools that burn for longer."
+            MIRROR -> "Level $nextLevel: the ghost fires faster and hits harder."
+            QUAKE -> "Level $nextLevel: a taller wave on a shorter fuse."
             CHRONO -> "Level $nextLevel: a wider field, and a deeper crawl."
             RICOCHET -> "Level $nextLevel: the orb hits harder and lives longer."
             FRACTURE -> "Level $nextLevel: ${nextLevel + 2} shards, each one meaner."
@@ -273,6 +309,17 @@ class Loadout {
     fun maxWeapon(): Int = 5 + lvl[Aug.HARDPOINT]
     fun mercyBonus(): Float = 0.35f * lvl[Aug.EVASION]
     fun gemBonus(): Float = 0.40f * lvl[Aug.BOUNTY]
+
+    /** Damage multiplier when the ship is not moving; FOCUS is the still hand. */
+    fun focusBonus(): Float = 0.16f * lvl[Aug.FOCUS]
+    /** Fire-rate cut per stack of CASCADE, and how many stacks it can hold. */
+    fun cascadeStep(): Float = if (lvl[Aug.CASCADE] > 0) 0.035f else 0f
+    fun cascadeMax(): Int = lvl[Aug.CASCADE] * 4
+    /** Hits one shield pip absorbs. */
+    fun shieldDepth(): Int = 1 + lvl[Aug.BULWARK]
+    /** Chance a kill detonates, and the blast it leaves. */
+    fun aftershockChance(): Float = 0.14f * lvl[Aug.AFTERSHOCK]
+    fun aftershockRadius(): Float = 54f + 16f * lvl[Aug.AFTERSHOCK]
 
     /** Damage multiplier at full throttle; scales with how hard you are moving. */
     fun momentumBonus(): Float = 0.14f * lvl[Aug.MOMENTUM]

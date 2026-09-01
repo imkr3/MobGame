@@ -45,8 +45,15 @@ class PlayerSlot(val index: Int, fx: Fx) {
         player.fireT = 0f
         player.revenge = 0f
         player.regenT = 0f
+        player.cascade = 0
+        player.cascadeT = 0f
+        player.shieldHits = loadout.shieldDepth()
         loadout.bonusSlots = meta.extraSlots
         if (ship.signature >= 0) loadout.lvl[ship.signature] = ship.signatureLevel
+        // ESCORT CONTRACT: a wingman is already flying when the run starts
+        if (meta.freeWing > 0) {
+            loadout.lvl[Aug.WING] = maxOf(loadout.lvl[Aug.WING], meta.freeWing)
+        }
         home(width, height)
     }
 

@@ -170,11 +170,12 @@ object Missions {
     fun claim(prefs: Prefs, slot: Int): Int {
         val m = read(prefs, slot)
         if (!m.done) return 0
-        prefs.cores = prefs.cores + m.reward
-        prefs.totalCores = prefs.totalCores + m.reward
-        prefs.addXp(m.reward / 3)
+        val paid = (m.reward * Shop.contractMultiplier(prefs)).toInt()
+        prefs.cores = prefs.cores + paid
+        prefs.totalCores = prefs.totalCores + paid
+        prefs.addXp(paid / 3)
         prefs.missionsDone = prefs.missionsDone + 1
         roll(prefs, slot)
-        return m.reward
+        return paid
     }
 }

@@ -94,6 +94,38 @@ object Decor {
                     x += bw
                 }
             }
+            Terrain.REEF -> {
+                // coral: fat rounded stacks with the odd tall column
+                var x = 0f
+                into.lineTo(0f, horizon)
+                while (x < w) {
+                    val bw = 22f + rng.nextFloat() * 26f
+                    val bh = 14f + rng.nextFloat() * rng.nextFloat() * 96f
+                    into.quadTo(x + bw * 0.25f, horizon - bh, x + bw * 0.5f, horizon - bh * 0.92f)
+                    into.quadTo(x + bw * 0.78f, horizon - bh * 0.8f, x + bw, horizon - 8f)
+                    x += bw
+                }
+            }
+            Terrain.WRECK -> {
+                // a scrapline: long low hulls with snapped spars sticking up
+                var x = 0f
+                into.lineTo(0f, horizon)
+                while (x < w) {
+                    val bw = 30f + rng.nextFloat() * 44f
+                    val bh = 6f + rng.nextFloat() * 30f
+                    into.lineTo(x, horizon - bh)
+                    if (rng.nextFloat() < 0.45f) {
+                        val spar = 22f + rng.nextFloat() * 52f
+                        val at = x + bw * (0.2f + rng.nextFloat() * 0.5f)
+                        into.lineTo(at, horizon - bh)
+                        into.lineTo(at + 5f, horizon - bh - spar)
+                        into.lineTo(at + 9f, horizon - bh)
+                    }
+                    into.lineTo(x + bw, horizon - bh * (0.5f + rng.nextFloat() * 0.5f))
+                    x += bw
+                }
+                into.lineTo(w, horizon)
+            }
             Terrain.STATION, Terrain.FOUNDRY -> {
                 // a hard machine skyline: towers, masts and blocky housings
                 var x = 0f
@@ -115,7 +147,7 @@ object Decor {
                 into.lineTo(w, horizon)
             }
             else -> {
-                // VOID, BLOOM and HOLLOW keep an open horizon
+                // VOID, BLOOM, HOLLOW, STORM and AURORA keep an open horizon
                 into.lineTo(0f, horizon)
                 into.lineTo(w, horizon)
             }
@@ -126,7 +158,7 @@ object Decor {
 
     /** True when the terrain wants the perspective grid under its horizon. */
     fun hasGrid(terrain: Int): Boolean =
-        terrain != Terrain.VOID && terrain != Terrain.BLOOM
+        terrain != Terrain.VOID && terrain != Terrain.BLOOM && terrain != Terrain.AURORA
 
     // ----------------------------------------------------------------- motes
 
@@ -186,6 +218,34 @@ object Decor {
                     m.vx = rnd(-6f, 6f)
                     m.rate = rnd(-2.4f, 2.4f)
                     m.sides = 4
+                }
+                Terrain.STORM -> {
+                    // rain: thin, fast, all falling the same way
+                    m.r = 1.4f + m.depth * 3f
+                    m.vy = 320f + m.depth * 520f
+                    m.vx = -60f - m.depth * 90f
+                    m.rate = 0f
+                }
+                Terrain.REEF -> {
+                    // bubbles rising through the water column
+                    m.r = 2f + m.depth * 7f
+                    m.vy = -rnd(20f, 70f) * m.depth
+                    m.vx = rnd(-10f, 10f)
+                    m.rate = rnd(-0.4f, 0.4f)
+                    m.sides = 6
+                }
+                Terrain.WRECK -> {
+                    m.r = 2.5f + m.depth * 14f
+                    m.vy = 10f + m.depth * 40f
+                    m.vx = rnd(-8f, 8f)
+                    m.rate = rnd(-0.5f, 0.5f)
+                    m.sides = 4 + Random.nextInt(3)
+                }
+                Terrain.AURORA -> {
+                    m.r = 1.2f + m.depth * 3.4f
+                    m.vy = 14f + m.depth * 50f
+                    m.vx = rnd(-14f, 14f)
+                    m.rate = rnd(-0.3f, 0.3f)
                 }
                 Terrain.HOLLOW -> {
                     m.r = 1f + m.depth * 2.6f
@@ -336,6 +396,98 @@ object Decor {
                     Neon.fillRect(c, 0f, y, w, y + 3f, fade(Palette.WHITE, 0.10f))
                     Neon.fillRect(c, 0f, y + 12f, w, y + 14f, fade(theme.accent, 0.08f))
                 }
+            }
+            Terrain.STORM -> {
+                // rain as short streaks along its own velocity
+                for (m in motes) {
+                    // a long streak along the fall line reads as rain; a dot does not
+                    Neon.hairline(
+                        c, m.x, m.y, m.x - m.vx * 0.055f, m.y - m.vy * 0.055f,
+                        fade(theme.accent, 0.30f + 0.45f * m.depth), 1.2f + m.depth * 1.6f
+                    )
+                }
+                // a strike every few seconds, forked, with the sky flashing
+                val beat = (time * 0.37f) % 1f
+                if (beat < 0.09f) {
+                    val a = 1f - beat / 0.09f
+                    val seedX = ((time * 0.37f).toInt() * 2654435761L).toInt()
+                    val bx = w * (0.15f + ((seedX ushr 8) and 0xFF) / 255f * 0.7f)
+                    Neon.fillRect(c, 0f, 0f, w, horizon, fade(theme.accent, 0.10f * a))
+                    var px = bx
+                    var py = 0f
+                    var step = 0
+                    while (py < horizon) {
+                        val nx = px + sin(py * 0.09f + seedX.toFloat()) * 26f
+                        val ny = py + 26f
+                        Neon.line(c, px, py, nx, ny, fade(Palette.WHITE, 0.75f * a), 2.4f, 1.2f)
+                        if (step == 3) Neon.hairline(c, nx, ny, nx + 34f, ny + 44f, fade(Palette.WHITE, 0.4f * a), 1.6f)
+                        px = nx; py = ny; step++
+                    }
+                }
+            }
+            Terrain.REEF -> {
+                // arches spanning the lane, and bubbles climbing through them
+                for (i in 0 until 4) {
+                    val y = horizon + (h - horizon) * (0.18f + i * 0.26f) + sin(time * 0.3f + i) * 6f
+                    val span = w * (0.5f + 0.16f * (i % 2))
+                    val cx0 = w * (if (i % 2 == 0) 0.3f else 0.7f)
+                    val a = 0.10f + 0.05f * i
+                    var k = 0
+                    while (k < 9) {
+                        val t0 = k / 9f
+                        val t1 = (k + 1) / 9f
+                        Neon.line(
+                            c, cx0 - span / 2 + span * t0, y - sin(t0 * 3.14f) * 64f,
+                            cx0 - span / 2 + span * t1, y - sin(t1 * 3.14f) * 64f,
+                            fade(theme.accent, a), 5f, 0.4f
+                        )
+                        k++
+                    }
+                }
+                for (m in motes) {
+                    Neon.ring(c, m.x, m.y, m.r, fade(Palette.WHITE, 0.16f + 0.22f * m.depth), 1.2f, 0.4f)
+                }
+            }
+            Terrain.WRECK -> {
+                // dead hulls hanging in the dark, lit only along one edge
+                for (m in motes) {
+                    if (m.depth < 0.45f) { Neon.softDisc(c, m.x, m.y, m.r * 0.6f, fade(theme.grid, 0.2f)); continue }
+                    val len0 = m.r * 2.6f
+                    val ax = cos(m.spin) * len0
+                    val ay = sin(m.spin) * len0
+                    Neon.line(c, m.x - ax, m.y - ay, m.x + ax, m.y + ay, fade(theme.nebula, 0.30f), 3.4f, 0.4f)
+                    Neon.hairline(c, m.x - ax * 0.8f, m.y - ay * 0.8f, m.x + ax * 0.6f, m.y + ay * 0.6f,
+                        fade(theme.accent, 0.34f), 1.2f)
+                    Neon.hairline(c, m.x, m.y, m.x - ay * 0.35f, m.y + ax * 0.35f, fade(theme.grid, 0.22f), 1.1f)
+                }
+            }
+            Terrain.AURORA -> {
+                // curtains: vertical bands that breathe and slide
+                for (i in 0 until 6) {
+                    val phase = time * 0.22f + i * 1.1f
+                    val cx0 = w * (0.10f + i * 0.16f) + sin(phase) * w * 0.10f
+                    val bw = 26f + 18f * sin(phase * 1.7f)
+                    val top = horizon * (0.10f + 0.06f * i)
+                    val bot = horizon + (h - horizon) * (0.35f + 0.10f * ((i * 3) % 4))
+                    val col = if (i % 2 == 0) theme.accent else theme.grid
+                    var y = top
+                    while (y < bot) {
+                        val f = (y - top) / (bot - top)
+                        val wob = sin(phase * 2.1f + f * 5f) * 20f
+                        val half = bw * (1f - f * 0.35f)
+                        Neon.fillRect(
+                            c, cx0 + wob - half, y, cx0 + wob + half, y + 14f,
+                            fade(col, 0.22f * (1f - f * 0.75f))
+                        )
+                        // a bright filament up the middle of the curtain
+                        Neon.fillRect(
+                            c, cx0 + wob - half * 0.16f, y, cx0 + wob + half * 0.16f, y + 14f,
+                            fade(Palette.WHITE, 0.10f * (1f - f))
+                        )
+                        y += 14f
+                    }
+                }
+                for (m in motes) Neon.softDisc(c, m.x, m.y, m.r, fade(Palette.WHITE, 0.34f * m.depth))
             }
             else -> {
                 // GRID: lit windows crawling along the skyline

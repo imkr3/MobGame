@@ -56,6 +56,28 @@ class Orb {
     var spin = 0f
 }
 
+/** A burning patch left where something died. */
+class Pool {
+    var active = false
+    var x = 0f; var y = 0f
+    var r = 40f
+    var life = 0f; var maxLife = 4f
+    var dps = 10f
+    var banks = false
+    var color = Palette.LIME
+}
+
+/** A wall of force rolling up the screen. */
+class Quake {
+    var active = false
+    var y = 0f
+    var speed = 420f
+    var thickness = 18f
+    var damage = 14f
+    var life = 0f
+    val hit = BooleanArray(World.ENEMY_CAP)
+}
+
 /** A deployed gun that holds position and fires up the screen. */
 class Turret {
     var active = false
@@ -94,6 +116,8 @@ class Arsenal(private val fx: Fx) {
     private val vortices = Array(4) { Vortex() }
     private val turrets = Array(4) { Turret() }
     private val orbs = Array(6) { Orb() }
+    private val pools = Array(7) { Pool() }
+    private val quakes = Array(3) { Quake() }
 
     private var lanceT = 0f
     private var swarmT = 0f
@@ -105,9 +129,12 @@ class Arsenal(private val fx: Fx) {
     private var vortexT = 0f
     private var sentinelT = 0f
     private var ricochetT = 0f
+    private var mirrorT = 0f
+    private var quakeT = 0f
     /** Radius of the live CHRONO field, or zero when it is not running. */
     var chronoR = 0f
         private set
+    private var phantomT = 0f
     private var tetherIdx = -1
     private var tetherTick = 0f
     var orbitAngle = 0f
@@ -119,8 +146,11 @@ class Arsenal(private val fx: Fx) {
         for (b in bolts) b.active = false
         nodeCd.fill(0f)
         lanceT = 2.5f; swarmT = 1.2f; arcT = 1.4f; pulseT = 4f; sentryT = 0.9f
-        flakT = 1.6f; wingT = 0.5f; tetherIdx = -1; tetherTick = 0f
+        flakT = 1.6f; wingT = 0.5f; tetherIdx = -1; tetherTick = 0f; phantomT = 0f
         vortexT = 3f; sentinelT = 2.5f; ricochetT = 1.4f
+        mirrorT = 0.4f; quakeT = 3.2f
+        for (p in pools) p.active = false
+        for (q in quakes) q.active = false
         chronoR = 0f
         for (v in vortices) v.active = false
         for (t in turrets) t.active = false
@@ -150,6 +180,7 @@ class Arsenal(private val fx: Fx) {
         orbitAngle += dt * 2.1f
         if (orbitAngle > TAU) orbitAngle -= TAU
 
+        if (phantomT > 0f) phantomT -= dt
         updateBeams(dt, world)
         updateNovas(dt, world)
         for (b in bolts) {
@@ -172,9 +203,156 @@ class Arsenal(private val fx: Fx) {
         if (lo.has(Aug.SENTINEL)) tickSentinel(dt, world)
         if (lo.has(Aug.CHRONO)) tickChrono(dt, world) else chronoR = 0f
         if (lo.has(Aug.RICOCHET)) tickRicochet(dt, world)
+        if (lo.has(Aug.MIRROR)) tickMirror(dt, world)
+        if (lo.has(Aug.QUAKE)) tickQuake(dt, world)
         updateVortices(dt, world)
         updateTurrets(dt, world)
         updateOrbs(dt, world)
+        updatePools(dt, world)
+        updateQuakes(dt, world)
+    }
+
+    // ------------------------------------------------------------- HARVEST
+
+    /** Called by the world when something dies, if HARVEST is installed. */
+    fun spillPool(world: World, x: Float, y: Float, r: Float) {
+        val lo = slot.loadout
+        val l = lo.lvl[Aug.HARVEST]
+        if (l <= 0) return
+        val br = lo.branch[Aug.HARVEST]
+        val p = pools.firstOrNull { !it.active } ?: pools.minByOrNull { it.life } ?: return
+        p.active = true
+        p.x = x; p.y = y
+        p.banks = br == Aug.B
+        p.r = when (br) {
+            Aug.A -> (30f + r * 1.4f) + 7f * l
+            Aug.B -> (26f + r * 1.2f) + 6f * l
+            else -> (22f + r) + 5f * l
+        }
+        p.maxLife = when (br) {
+            Aug.A -> 2.6f + 0.2f * l
+            Aug.B -> 5.0f + 0.35f * l
+            else -> 2.2f + 0.2f * l
+        }
+        p.life = p.maxLife
+        // Pools overlap, and overlapping damage-over-time compounds fast, so
+        // each one is worth far less than a comparable direct-damage system.
+        p.dps = when (br) {
+            Aug.A -> 8f + 2.4f * l
+            Aug.B -> 7f + 2.2f * l
+            else -> 6f + 2f * l
+        } + lo.damageBonus()
+        p.color = if (br == Aug.B) Palette.AMBER else Palette.LIME
+    }
+
+    private fun updatePools(dt: Float, world: World) {
+        for (p in pools) {
+            if (!p.active) continue
+            p.life -= dt
+            if (p.life <= 0f) { p.active = false; continue }
+            for (e in world.enemies) {
+                if (!e.active) continue
+                if (len(e.x - p.x, e.y - p.y) > p.r + e.r) continue
+                world.hit(e, p.dps * dt, e.x, e.y, false)
+            }
+            if (p.banks) world.magnetiseWithin(p.x, p.y, p.r * 1.6f, dt)
+            if (chance(dt * 12f)) {
+                val a = rnd(TAU)
+                val rr = rnd(p.r)
+                world.fx.burst(p.x + cos(a) * rr, p.y + sin(a) * rr, 1, p.color, 40f, 1.6f, 0.5f)
+            }
+        }
+    }
+
+    // -------------------------------------------------------------- MIRROR
+
+    /** Where the ghost sits: mirrored across the centre line. */
+    fun mirrorX(world: World, index: Int): Float {
+        val p = slot.player
+        val base = world.w - p.x
+        return clamp(base + (if (index == 0) 0f else 34f), 16f, world.w - 16f)
+    }
+
+    fun mirrorCount(lo: Loadout): Int = if (lo.branch[Aug.MIRROR] == Aug.A) 2 else 1
+
+    private fun tickMirror(dt: Float, world: World) {
+        val lo = slot.loadout
+        val p = slot.player
+        val l = lo.lvl[Aug.MIRROR]
+        val br = lo.branch[Aug.MIRROR]
+        if (!p.alive) return
+        mirrorT -= dt
+        if (mirrorT > 0f) return
+        val bonus = lo.damageBonus() + slot.ship.damageBonus
+        val n = mirrorCount(lo)
+        for (i in 0 until n) {
+            val mx = mirrorX(world, i)
+            val b = world.allyBullet(mx, p.y - 12f, 0f, -880f, 4.2f, 3 + l + bonus, Palette.WHITE, 1)
+            if (br == Aug.B) b.pierce = 1
+        }
+        mirrorT = cd(world, clamp(0.42f - 0.03f * l, 0.24f, 0.42f))
+    }
+
+    /** PHANTOM: the ghost eats one shot meant for you, on a cooldown. */
+    fun mirrorGuard(world: World): Boolean {
+        val lo = slot.loadout
+        if (lo.branch[Aug.MIRROR] != Aug.B || phantomT > 0f) return false
+        phantomT = cd(world, 7f - 0.6f * lo.lvl[Aug.MIRROR])
+        return true
+    }
+
+    // --------------------------------------------------------------- QUAKE
+
+    private fun tickQuake(dt: Float, world: World) {
+        val lo = slot.loadout
+        val l = lo.lvl[Aug.QUAKE]
+        val br = lo.branch[Aug.QUAKE]
+        quakeT -= dt
+        if (quakeT > 0f) return
+        val p = slot.player
+        if (!p.alive) return
+        val waves = if (br == Aug.A) 2 else 1
+        for (i in 0 until waves) {
+            val q = quakes.firstOrNull { !it.active } ?: break
+            q.active = true
+            q.y = p.y + 30f + i * 90f
+            q.speed = when (br) {
+                Aug.A -> 520f
+                Aug.B -> 180f
+                else -> 380f
+            }
+            q.thickness = when (br) {
+                Aug.A -> 16f
+                Aug.B -> 40f + 3f * l
+                else -> 18f + 2f * l
+            }
+            q.damage = when (br) {
+                Aug.A -> 8f + 2.5f * l
+                Aug.B -> 22f + 8f * l
+                else -> 7f + 2.5f * l
+            } + lo.damageBonus()
+            q.life = 4f
+            q.hit.fill(false)
+        }
+        world.fx.shake(0.2f)
+        world.sound?.sfx(Sfx.PICKUP)
+        quakeT = cd(world, if (br == Aug.B) 8.0f - 0.3f * l else 9.0f - 0.3f * l)
+    }
+
+    private fun updateQuakes(dt: Float, world: World) {
+        for (q in quakes) {
+            if (!q.active) continue
+            q.y -= q.speed * dt
+            q.life -= dt
+            if (q.y < -q.thickness || q.life <= 0f) { q.active = false; continue }
+            for (i in world.enemies.indices) {
+                val e = world.enemies[i]
+                if (!e.active || q.hit[i]) continue
+                if (abs(e.y - q.y) > q.thickness + e.r) continue
+                q.hit[i] = true
+                world.hit(e, q.damage, e.x, e.y, true)
+            }
+        }
     }
 
     // -------------------------------------------------------------- CHRONO
@@ -350,19 +528,19 @@ class Arsenal(private val fx: Fx) {
         v.implodes = false
         when (br) {
             Aug.A -> {                                   // SINGULARITY
-                vortexT = cd(world, clamp(5.4f - 0.2f * (l - 3), 4.2f, 5.4f))
-                v.r = 128f + 8f * (l - 3); v.dps = 20f + 5f * (l - 3)
-                v.maxLife = 3.6f; v.pull = 300f; v.banks = true
+                vortexT = cd(world, clamp(4.8f - 0.25f * (l - 3), 3.8f, 4.8f))
+                v.r = 136f + 10f * (l - 3); v.dps = 30f + 9f * (l - 3)
+                v.maxLife = 4.2f; v.pull = 300f; v.banks = true
             }
             Aug.B -> {                                   // IMPLOSION
-                vortexT = cd(world, clamp(5.0f - 0.2f * (l - 3), 3.8f, 5.0f))
-                v.r = 124f; v.dps = 20f
+                vortexT = cd(world, clamp(4.4f - 0.25f * (l - 3), 3.4f, 4.4f))
+                v.r = 138f; v.dps = 26f
                 v.maxLife = 2.2f; v.pull = 380f; v.implodes = true
-                v.damage = 125f + 32f * (l - 3)
+                v.damage = 155f + 44f * (l - 3)
             }
             else -> {
-                vortexT = cd(world, 6f - 0.4f * l)
-                v.r = 84f + 15f * l; v.dps = 18f + 8f * l
+                vortexT = cd(world, 5.2f - 0.4f * l)
+                v.r = 90f + 16f * l; v.dps = 26f + 12f * l
                 v.maxLife = 2.8f + 0.25f * l; v.pull = 220f + 30f * l
             }
         }
@@ -430,12 +608,12 @@ class Arsenal(private val fx: Fx) {
             t.life = t.maxLife
             t.every = when (br) {
                 Aug.A -> 0.28f
-                Aug.B -> 1.0f
+                Aug.B -> 1.15f
                 else -> clamp(0.5f - 0.05f * l, 0.3f, 0.5f)
             }
             t.damage = when (br) {
                 Aug.A -> 5 + l + bonus
-                Aug.B -> 7 + l + bonus
+                Aug.B -> 6 + l + bonus
                 else -> 4 + 2 * l + bonus
             }
             t.fireT = 0.2f
@@ -573,12 +751,12 @@ class Arsenal(private val fx: Fx) {
         }
         wingT -= dt
         if (wingT > 0f) return
-        wingT = cd(world, if (br == Aug.B) clamp(1.85f - 0.1f * (l - 3), 1.45f, 1.85f) else clamp(0.7f - 0.045f * l, 0.42f, 0.7f))
+        wingT = cd(world, if (br == Aug.B) clamp(2.8f - 0.1f * (l - 3), 2.4f, 2.8f) else clamp(0.7f - 0.045f * l, 0.42f, 0.7f))
         for (i in 0 until n) {
             val wx = p.x + wingOffset(lo, i)
             val wy = p.y + 6f
             if (br == Aug.B) {
-                val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 3 + l + bonus, Palette.WHITE)
+                val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 2 + l + bonus, Palette.WHITE)
                 m.turn = 4.5f
             } else {
                 world.allyBullet(wx, wy, 0f, -880f, 3.4f, 2 + l + bonus, Palette.WHITE, 1)
@@ -640,8 +818,8 @@ class Arsenal(private val fx: Fx) {
                 fx.shake(0.1f)
             }
             Aug.B -> { // SIEGE: one ruinous column
-                lanceT = cd(world, clamp(3.4f - 0.2f * (l - 3), 2.6f, 3.4f))
-                beam(p.x, 24f, 150f + 34f * (l - 3), 0.55f, Palette.WHITE, 0f)
+                lanceT = cd(world, clamp(3.1f - 0.2f * (l - 3), 2.4f, 3.1f))
+                beam(p.x, 30f, 165f + 38f * (l - 3), 0.55f, Palette.WHITE, 0f)
                 fx.shake(0.42f)
                 fx.flash(Palette.VIOLET, 0.22f)
                 world.sound?.sfx(Sfx.LASER)
@@ -669,20 +847,20 @@ class Arsenal(private val fx: Fx) {
         val bonus = lo.damageBonus()
         when (b) {
             Aug.A -> { // HORNETS
-                swarmT = cd(world, clamp(1.45f - 0.08f * (l - 3), 1.05f, 1.45f))
+                swarmT = cd(world, clamp(2.1f - 0.08f * (l - 3), 1.7f, 2.1f))
                 for (i in 0 until 3) {
                     val m = world.missile(p.x, p.y - 8f, rnd(-260f, 260f), rnd(-380f, -180f), 3.4f, 3 + bonus, Palette.LIME)
                     m.turn = 7.5f
                 }
             }
             Aug.B -> { // WARHEAD
-                swarmT = cd(world, clamp(2.6f - 0.12f * (l - 3), 2.1f, 2.6f))
+                swarmT = cd(world, clamp(3.0f - 0.12f * (l - 3), 2.5f, 3.0f))
                 val m = world.missile(p.x, p.y - 12f, rnd(-40f, 40f), -230f, 7f, 8 + bonus, Palette.AMBER)
                 m.turn = 2.6f
                 m.splash = 38f
             }
             else -> {
-                swarmT = cd(world, 2.0f - 0.2f * l)
+                swarmT = cd(world, 2.3f - 0.18f * l)
                 for (i in 0 until l) {
                     val spread = (i - (l - 1) * 0.5f) * 130f
                     val m = world.missile(p.x, p.y - 8f, spread, -260f, 4.2f, 5 + l + bonus, Palette.LIME)
@@ -779,8 +957,8 @@ class Arsenal(private val fx: Fx) {
         val p = slot.player
 
         if (b == Aug.B) { // RAILGUN: a line straight up the lane
-            arcT = cd(world, clamp(2.1f - 0.15f * (l - 3), 1.5f, 2.1f))
-            val dmg = 42f + 14f * (l - 3)
+            arcT = cd(world, clamp(1.8f - 0.15f * (l - 3), 1.3f, 1.8f))
+            val dmg = 58f + 20f * (l - 3)
             val bolt = obtainBolt() ?: return
             bolt.active = true
             bolt.color = Palette.WHITE
@@ -961,6 +1139,44 @@ class Arsenal(private val fx: Fx) {
                     o.x + cos(ang) * o.r * 1.9f, o.y + sin(ang) * o.r * 1.9f,
                     fade(o.color, 0.7f * a), 1.6f, 0.7f
                 )
+            }
+        }
+
+        for (p2 in pools) {
+            if (!p2.active) continue
+            val t = clamp(p2.life / p2.maxLife, 0f, 1f)
+            Neon.softDisc(c, p2.x, p2.y, p2.r, fade(p2.color, 0.16f * t))
+            Neon.ring(c, p2.x, p2.y, p2.r, fade(p2.color, 0.55f * t), 1.8f, 0.7f)
+            Neon.ring(c, p2.x, p2.y, p2.r * (0.55f + 0.12f * sin(orbitAngle * 3f + p2.x)),
+                fade(Palette.WHITE, 0.20f * t), 1.2f, 0.4f)
+        }
+
+        for (q in quakes) {
+            if (!q.active) continue
+            val t = clamp(q.life / 4f, 0f, 1f)
+            Neon.fillRect(c, 0f, q.y - q.thickness, world.w, q.y + q.thickness,
+                fade(Palette.SKY, 0.10f * t))
+            Neon.hairline(c, 0f, q.y, world.w, q.y, fade(Palette.WHITE, 0.75f * t), 2.4f)
+            Neon.hairline(c, 0f, q.y - q.thickness, world.w, q.y - q.thickness, fade(Palette.SKY, 0.4f * t), 1.4f)
+            Neon.hairline(c, 0f, q.y + q.thickness, world.w, q.y + q.thickness, fade(Palette.SKY, 0.4f * t), 1.4f)
+        }
+
+        if (lo.has(Aug.MIRROR) && p.alive) {
+            // the ghost: the same hull, drawn hollow, on the far side
+            val n = mirrorCount(lo)
+            val ghost = if (lo.branch[Aug.MIRROR] == Aug.B) Palette.VIOLET else Palette.WHITE
+            for (i in 0 until n) {
+                val mx = mirrorX(world, i)
+                c.save()
+                c.translate(mx, p.y)
+                c.rotate(-p.bank * 16f)
+                c.scale(-p.bodyR, p.bodyR)
+                Neon.path(c, Hulls.of(slot.ship), fade(ghost, 0.55f), 1.5f / p.bodyR, 0.6f, 0.5f)
+                c.restore()
+                Neon.softDisc(c, mx, p.y + p.bodyR * 0.8f, p.bodyR * 0.5f, fade(ghost, 0.14f))
+            }
+            if (lo.branch[Aug.MIRROR] == Aug.B && phantomT <= 0f) {
+                Neon.ring(c, p.x, p.y, p.bodyR * 2.2f, fade(Palette.VIOLET, 0.30f), 1.4f, 0.6f)
             }
         }
 

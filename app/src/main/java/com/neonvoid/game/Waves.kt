@@ -63,8 +63,8 @@ object Waves {
     const val HEAVY = 2       // slow emplacements and support
 
     fun weightClass(kind: Int): Int = when (kind) {
-        EK.SWARMER, EK.DRIFTER, EK.WEAVER, EK.WISP -> LIGHT
-        EK.CHARGER, EK.ORBITER, EK.SPLITTER -> BRAWLER
+        EK.SWARMER, EK.DRIFTER, EK.WEAVER, EK.WISP, EK.POD -> LIGHT
+        EK.CHARGER, EK.ORBITER, EK.SPLITTER, EK.STALKER -> BRAWLER
         else -> HEAVY
     }
 
@@ -83,6 +83,10 @@ object Waves {
         EK.MINELAYER -> (1 + scale / 4).coerceAtMost(2)
         EK.CARRIER -> (1 + scale / 5).coerceAtMost(2)
         EK.PYLON -> 2 * (1 + scale / 5).coerceAtMost(2)
+        EK.STALKER -> (1 + scale / 2).coerceAtMost(4)
+        EK.HOWLER -> (1 + scale / 3).coerceAtMost(3)
+        EK.SEEDER -> (1 + scale / 3).coerceAtMost(3)
+        EK.MENDER -> (1 + scale / 4).coerceAtMost(2)
         else -> 3
     }
 

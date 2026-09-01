@@ -280,11 +280,23 @@ class Game(context: Context) {
         synchronized(inputLock) { pool.addAll(batch) }
     }
 
-    /** The five menu screens are tabs of one shell, so the bar is always live. */
+    /**
+     * The five menu screens are tabs of one shell, so the bar is always live.
+     * It is drawn over the screen's own content and has to be hit-tested that
+     * way too, or a card sitting under it would win the tap.
+     */
     private fun tabbed(vararg own: Button): List<Button> =
         ArrayList<Button>(own.size + hud.navCells.size).apply {
-            addAll(own)
             addAll(hud.navCells)
+            addAll(own)
+        }
+
+    /** Same, for a screen whose own content is a scrolling list. */
+    private fun tabbed(own: List<Button>, vararg fixed: Button): List<Button> =
+        ArrayList<Button>(own.size + fixed.size + hud.navCells.size).apply {
+            addAll(hud.navCells)
+            addAll(fixed)
+            addAll(own)
         }
 
     private fun buttonsFor(): List<Button> = when (state) {
@@ -294,9 +306,9 @@ class Game(context: Context) {
         State.GAME_OVER -> listOf(hud.retry, hud.toMenu)
         State.AUGMENT -> (0 until hud.cardCount).map { hud.cards[it].btn }
         State.HANGAR -> tabbed(hud.summon, hud.summon10, *hud.shipCells)
-        State.SHOP -> tabbed(*hud.shopRows)
+        State.SHOP -> tabbed(hud.liveShopRows())
         State.RECORDS -> tabbed(hud.music, hud.sfx, hud.haptic)
-        State.LEVELS -> tabbed(hud.launch, *hud.levelCells)
+        State.LEVELS -> tabbed(hud.liveLevelCells(), hud.launch)
         State.COOP -> when (coopStage) {
             0 -> listOf(hud.back, hud.hostGame, hud.joinGame)
             1 -> listOf(hud.back, hud.startCoop)
@@ -324,6 +336,12 @@ class Game(context: Context) {
                 downButton = b
                 downPointer = id
                 haptics.light()
+                // A finger almost always lands on a card in the long lists, so
+                // scroll tracking has to start here too or dragging from one
+                // would never move anything.
+                if ((state == State.SHOP || state == State.LEVELS) && moveId == -1) {
+                    moveId = id; lastX = x; lastY = y
+                }
                 return
             }
         }
@@ -331,6 +349,11 @@ class Game(context: Context) {
         if (state == State.REVEAL) {
             state = State.HANGAR
             audio.sfx(Sfx.UI)
+            return
+        }
+        if (state == State.SHOP || state == State.LEVELS) {
+            // track the finger even when it landed on a card, so a drag scrolls
+            if (moveId == -1) { moveId = id; lastX = x; lastY = y }
             return
         }
         if (state != State.PLAYING) return
@@ -349,6 +372,15 @@ class Game(context: Context) {
     }
 
     private fun onMove(id: Int, x: Float, y: Float) {
+        // the long menu lists scroll under the finger
+        if ((state == State.SHOP || state == State.LEVELS) && id == moveId) {
+            val dy = y - lastY
+            if (state == State.SHOP) hud.scrollShop(dy) else hud.scrollSectors(dy)
+            lastX = x
+            lastY = y
+            // a drag is not a tap: let go of whatever the finger started on
+            if (kotlin.math.abs(dy) > 0.6f) downButton?.pressed = false
+        }
         if (state == State.PLAYING && id == moveId) {
             val dx = x - lastX
             val dy = y - lastY
@@ -376,6 +408,7 @@ class Game(context: Context) {
 
     /** Maps a tab cell to the screen behind it. */
     private fun openTab(tab: Int) {
+        hud.resetScroll()
         state = when (tab) {
             Hud.Tab.SHOP -> State.SHOP
             Hud.Tab.HANGAR -> State.HANGAR
