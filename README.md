@@ -611,8 +611,8 @@ validated headlessly here:
   crash. The suite is also the balance yardstick, compared on the median score.
   A single pass is far too noisy to tune against — one path swung between 100k
   and 245k across six runs of the *same* build — so tuning is done on medians of
-  20–30 passes per path, which is what the current spread of roughly −40% to
-  +55% around the median was measured with. The band is wider than it was before
+  20–30 passes per path, which is what the current spread of −43% to +47%
+  around the median was measured with. The band is wider than it was before
   the capstones, which is the point: a finished evolution is meant to be worth
   finishing. Note the scripted pilot is invulnerable and weaves along the bottom
   of the screen, so it systematically undervalues defensive and proximity
