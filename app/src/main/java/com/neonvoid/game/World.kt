@@ -23,7 +23,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     companion object {
         const val ENEMY_CAP = 56
-        const val BULLET_CAP = 620
+        const val BULLET_CAP = 1100
 
         /** Seconds a boss fight runs at full toughness before it starts giving. */
         const val BOSS_PATIENCE = 60f
@@ -366,19 +366,35 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
 
     // ------------------------------------------------------------- spawning
 
-    private fun obtainBullet(): Bullet {
+    /**
+     * A free bullet, or the oldest one of the same side when the pool is dry.
+     *
+     * The pool used to hand back whatever slot the cursor happened to land on,
+     * so a saturated pool let a player volley delete incoming enemy fire and
+     * vice versa - fire vanishing mid-flight, and a stealth difficulty swing
+     * in whichever direction happened to win the race. Recycling only within
+     * one side keeps the two from erasing each other.
+     */
+    private fun obtainBullet(hostile: Boolean): Bullet {
         for (i in bullets.indices) {
             bIdx = (bIdx + 1) % bullets.size
             if (!bullets[bIdx].active) return bullets[bIdx]
         }
-        return bullets[bIdx]
+        var oldest = -1
+        var leastLife = Float.MAX_VALUE
+        for (i in bullets.indices) {
+            val b = bullets[i]
+            if (b.hostile != hostile) continue
+            if (b.life < leastLife) { leastLife = b.life; oldest = i }
+        }
+        return bullets[if (oldest >= 0) oldest else bIdx]
     }
 
     private fun fire(
         x: Float, y: Float, vx: Float, vy: Float, r: Float, damage: Int,
         hostile: Boolean, color: Int, style: Int
     ): Bullet {
-        val b = obtainBullet()
+        val b = obtainBullet(hostile)
         b.active = true
         b.x = x; b.y = y; b.vx = vx; b.vy = vy
         b.r = r; b.damage = damage; b.hostile = hostile
@@ -595,8 +611,8 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 (wave - 22).coerceAtLeast(0) * 0.006f).coerceAtMost(2.5f) * overloadSpeed
         // >1 means slower firing: the first waves deliberately shoot less
         val rateMul =
-            (clamp(1.28f - (wave - 1) * 0.048f, 0.42f, 1.28f) -
-                (wave - 19).coerceAtLeast(0) * 0.003f).coerceAtLeast(0.24f) * overloadRate
+            (clamp(1.28f - (wave - 1) * 0.052f, 0.38f, 1.28f) -
+                (wave - 19).coerceAtLeast(0) * 0.004f).coerceAtLeast(0.20f) * overloadRate
         e.active = true
         e.kind = kind
         e.x = x; e.y = y
@@ -771,12 +787,12 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
                 }
                 e.r = if (bossType == BT.FORGE) 58f else 52f
                 // Bosses are the wall of the run: a big flat base, a steep linear
-                // climb and a capped quadratic on top so late fights stay fights.
-                // The cap lands earlier than it used to: past wave 45 the extra
-                // health only turned a fight into a two-minute chore, and the
-                // curve below wave 45 is untouched.
-                val quad = minOf(wave.toFloat() * wave, 2000f) * 2.6f
-                e.hp = (185f + wave * 70f + quad) * typeMul * (1f + Levels.tier(wave) * 0.4f)
+                // climb and a quadratic on top. The augments now delete the old
+                // curve - a wave-75 fight went from ninety seconds to twenty -
+                // so it climbs again, with BOSS_PATIENCE below still keeping a
+                // weak build from meeting an unkillable wall.
+                val quad = wave.toFloat() * wave * 8.5f
+                e.hp = (260f + wave * 165f + quad) * typeMul * (1f + Levels.tier(wave) * 0.5f)
                 e.vy = 90f
                 e.holdY = h * 0.20f
                 e.fireEvery = 1f
@@ -790,7 +806,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
 
         // Elites appear once the run is deep enough: tougher, worth more.
-        if (kind != EK.BOSS && kind != EK.MINE && wave >= 8 && chance(clamp(0.03f + wave * 0.012f, 0f, 0.72f))) {
+        if (kind != EK.BOSS && kind != EK.MINE && wave >= 8 && chance(clamp(0.03f + wave * 0.015f, 0f, 0.80f))) {
             promoteElite(e)
         }
         e.maxHp = e.hp
@@ -821,7 +837,7 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         // turned the late game into a grind rather than a fight: every other
         // threat had already hit its cap. The quadratic is now much gentler and
         // the danger dials below carry the difficulty instead.
-        val hpMul = (1f + (n - 1) * 0.26f + (n - 1) * (n - 1) * 0.0075f + tier * 0.9f) * overloadHp
+        val hpMul = (1f + (n - 1) * 0.30f + (n - 1) * (n - 1) * 0.018f + tier * 1.1f) * overloadHp
 
         if (Levels.isBossWave(n)) {
             script.add(Spawn(1.9f, EK.BOSS, w * 0.5f, -110f, hpMul))
@@ -854,6 +870,18 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         }
         script.sortBy { it.time }
     }
+
+    /**
+     * Test hooks for the weapon tiers: how many rounds one volley puts out, and
+     * the interval the current tier reloads on.
+     */
+    internal fun countOneVolley(): Int {
+        for (b in bullets) b.active = false
+        playerFire(slots[0])
+        return bullets.count { it.active && !it.hostile }
+    }
+
+    internal fun volleyInterval(): Float = weaponInterval(player.weapon)
 
     /** Test hook: drop the run straight into a deep wave to measure pacing. */
     internal fun jumpToWave(n: Int, overloadTier: Int) {
@@ -1047,15 +1075,23 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         player.fireT -= dt
         if (player.fireT <= 0f) {
             playerFire(s)
-            var base = when (player.weapon) {
-                1 -> 0.155f; 2 -> 0.145f; 3 -> 0.135f; 4 -> 0.125f; else -> 0.115f
-            }
+            var base = weaponInterval(player.weapon)
             base *= loadout.fireIntervalMul() * ship.fireMul
             if (loadout.branch[Aug.SPREAD] == Aug.A) base *= 0.88f
             if (player.revenge > 0f) base /= loadout.revengeMul()
             base *= clamp(1f - loadout.cascadeStep() * player.cascade, 0.4f, 1f)
             player.fireT = base * (if (player.odTime > 0f) 0.55f else 1f)
         }
+    }
+
+    /**
+     * Seconds between volleys at a weapon tier. One table, read by the firing
+     * loop and by the guard that asserts each tier beats the one below it - the
+     * two used to be separate, which is how the upper tiers went unnoticed.
+     */
+    private fun weaponInterval(tier: Int): Float = when (tier) {
+        1 -> 0.155f; 2 -> 0.145f; 3 -> 0.135f; 4 -> 0.125f; 5 -> 0.115f
+        6 -> 0.103f; else -> 0.092f
     }
 
     private fun playerShot(s: PlayerSlot, offX: Float, offY: Float, angleDeg: Float, r: Float, dmg: Int): Bullet {
@@ -1065,10 +1101,15 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
         val a = (-90f + angleDeg) * DEG
         val speed = 1000f * loadout.bulletSpeedMul()
         val color = if (od) Palette.AMBER else Palette.CYAN
-        var d = dmg.coerceAtLeast(1)
-        if (loadout.critChance() > 0f && chance(loadout.critChance())) d *= 2
-        val b = fireAngle(player.x + offX, player.y + offY, a, speed, r, d, false, color, 1)
+        // VELOCITY is not purely a travel-time stat: a faster round lands harder
+        var d = (dmg.coerceAtLeast(1) * loadout.velocityDamageMul()).toInt().coerceAtLeast(1)
+        var crit = false
+        if (loadout.critChance() > 0f && chance(loadout.critChance())) { d *= 2; crit = true }
+        // POWER thickens the round, so it clips what a thin one would miss
+        val rr = r + loadout.shotRadiusBonus()
+        val b = fireAngle(player.x + offX, player.y + offY, a, speed, rr, d, false, color, 1)
         b.pierce += loadout.extraPierce()
+        if (crit && loadout.critPierces()) b.pierce += 1
         b.burn = loadout.burnDps()
         val fl = loadout.lvl[Aug.FRACTURE]
         if (fl > 0) {
@@ -1111,13 +1152,30 @@ class World(internal val fx: Fx, private val haptics: Haptics) {
             2 -> { playerShot(s, -7f, -12f, 0f, 4f, d); playerShot(s, 7f, -12f, 0f, 4f, d) }
             3 -> { playerShot(s, -9f, -10f, 0f, 3.8f, d); playerShot(s, 9f, -10f, 0f, 3.8f, d); playerShot(s, 0f, -16f, 0f, 4.6f, d) }
             4 -> {
-                playerShot(s, -10f, -10f, -7f, 3.8f, d); playerShot(s, 10f, -10f, 7f, 3.8f, d)
-                playerShot(s, 0f, -16f, 0f, 4.6f, d)
+                // weapon 4 used to fire the same three rounds as weapon 3, only
+                // angled a few degrees: a tier that bought almost nothing
+                playerShot(s, -12f, -8f, -10f, 3.8f, d); playerShot(s, 12f, -8f, 10f, 3.8f, d)
+                playerShot(s, -5f, -13f, -3f, 4.1f, d); playerShot(s, 5f, -13f, 3f, 4.1f, d)
             }
-            else -> {
+            5 -> {
                 playerShot(s, -11f, -9f, -9f, 3.8f, d); playerShot(s, 11f, -9f, 9f, 3.8f, d)
                 playerShot(s, -5f, -14f, -3f, 4.2f, d); playerShot(s, 5f, -14f, 3f, 4.2f, d)
                 playerShot(s, 0f, -17f, 0f, 4.8f, d)
+            }
+            6 -> {
+                // the HARDPOINT tiers: wider mounts and a heavier centre line
+                playerShot(s, -15f, -6f, -13f, 3.8f, d); playerShot(s, 15f, -6f, 13f, 3.8f, d)
+                playerShot(s, -9f, -11f, -6f, 4f, d); playerShot(s, 9f, -11f, 6f, 4f, d)
+                playerShot(s, -4f, -16f, -2f, 4.4f, d); playerShot(s, 4f, -16f, 2f, 4.4f, d)
+                playerShot(s, 0f, -19f, 0f, 5.4f, d + 1)
+            }
+            else -> {
+                playerShot(s, -17f, -5f, -16f, 3.9f, d); playerShot(s, 17f, -5f, 16f, 3.9f, d)
+                playerShot(s, -12f, -9f, -9f, 4.1f, d); playerShot(s, 12f, -9f, 9f, 4.1f, d)
+                playerShot(s, -7f, -13f, -4f, 4.3f, d); playerShot(s, 7f, -13f, 4f, 4.3f, d)
+                playerShot(s, -3f, -17f, -1f, 4.6f, d); playerShot(s, 3f, -17f, 1f, 4.6f, d)
+                val core = playerShot(s, 0f, -20f, 0f, 6f, d + 2)
+                core.pierce += 1
             }
         }
         if (od) {

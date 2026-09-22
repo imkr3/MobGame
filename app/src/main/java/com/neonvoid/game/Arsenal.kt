@@ -901,15 +901,26 @@ class Arsenal(private val fx: Fx) {
     // ---------------------------------------------------------------- WING
 
     private fun wingCount(lo: Loadout): Int = when {
-        lo.mastered(Aug.WING) && lo.branch[Aug.WING] == Aug.A -> 4   // SQUADRON
-        lo.lvl[Aug.WING] >= 5 -> 3
+        lo.mastered(Aug.WING) && lo.branch[Aug.WING] == Aug.A -> 5   // SQUADRON
+        lo.lvl[Aug.WING] >= 5 -> 4
+        lo.lvl[Aug.WING] >= 3 -> 3
         else -> 2
     }
 
+    /** Guns each wing puts out per volley; a veteran flight fires in bursts. */
+    private fun wingGuns(lo: Loadout): Int = when {
+        lo.lvl[Aug.WING] >= 5 -> 3
+        lo.lvl[Aug.WING] >= 3 -> 2
+        else -> 1
+    }
+
     private fun wingOffset(lo: Loadout, i: Int): Float {
-        val spread = 30f + 5f * lo.lvl[Aug.WING]
         val n = wingCount(lo)
-        return (i - (n - 1) * 0.5f) * spread * 2f
+        if (n <= 1) return 0f
+        // The flight keeps one total span however many wings are in it, so a
+        // bigger squadron flies tighter instead of off the edge of the screen.
+        val half = 64f + 6f * lo.lvl[Aug.WING]
+        return (i / (n - 1f) - 0.5f) * half * 2f
     }
 
     private fun tickWing(dt: Float, world: World) {
@@ -930,9 +941,10 @@ class Arsenal(private val fx: Fx) {
         if (wingT > 0f) return
         wingT = cd(
             world,
-            if (br == Aug.B) clamp(2.8f - 0.1f * (l - 3), 2.4f, 2.8f) * (if (lo.mastered(Aug.WING)) 1.45f else 1f)
-            else clamp(0.7f - 0.045f * l, 0.42f, 0.7f)
+            if (br == Aug.B) clamp(2.5f - 0.1f * (l - 3), 2.1f, 2.5f) * (if (lo.mastered(Aug.WING)) 1.3f else 1f)
+            else clamp(0.92f - 0.04f * l, 0.66f, 0.92f)
         )
+        val guns = wingGuns(lo)
         for (i in 0 until n) {
             val wx = p.x + wingOffset(lo, i)
             val wy = p.y + 6f
@@ -940,11 +952,15 @@ class Arsenal(private val fx: Fx) {
                 // BARRAGE: each wing throws a pair once the line is mastered
                 val salvo = if (lo.mastered(Aug.WING)) 2 else 1
                 for (k in 0 until salvo) {
-                    val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 2 + l + bonus, Palette.WHITE)
+                    val m = world.missile(wx, wy, rnd(-90f, 90f), -300f, 4f, 3 + l + bonus, Palette.WHITE)
                     m.turn = 4.5f
                 }
             } else {
-                world.allyBullet(wx, wy, 0f, -880f, 3.4f, 2 + l + bonus, Palette.WHITE, 1)
+                // each wing fires its own little battery, fanned outward
+                for (k in 0 until guns) {
+                    val ang = (k - (guns - 1) * 0.5f) * 90f
+                    world.allyBullet(wx, wy, ang, -880f, 3.4f, 1 + l + bonus, Palette.WHITE, 1)
+                }
             }
         }
     }
@@ -1051,7 +1067,7 @@ class Arsenal(private val fx: Fx) {
                 for (i in 0 until n) {
                     val m = world.missile(
                         p.x + (i - (n - 1) * 0.5f) * 22f, p.y - 12f,
-                        rnd(-40f, 40f), -230f, 7f, 8 + bonus, Palette.AMBER
+                        rnd(-40f, 40f), -230f, 7f, 6 + bonus, Palette.AMBER
                     )
                     m.turn = 2.6f
                     m.splash = 38f
@@ -1125,7 +1141,7 @@ class Arsenal(private val fx: Fx) {
                         for (k in -1..1) {
                             world.allyBullet(
                                 nx, ny, k * 150f, -760f, 3.4f,
-                                4 + lo.damageBonus(), Palette.AMBER, 1
+                                2 + lo.damageBonus() / 2, Palette.AMBER, 1
                             )
                         }
                     } else {

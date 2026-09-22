@@ -97,6 +97,12 @@ hazard red and **everything that can be sped up is, permanently**: enemies fire
 health, arrive in far greater numbers and the breather between waves shortens.
 Every sector after that stacks another tier on top.
 
+The mob curve is tuned against the augments rather than set once: when the
+modules were last made stronger, a wave-75 boss fell from ninety seconds to
+twenty, so boss health went back to an uncapped quadratic and the mob curve
+steepened where a finished build is strongest. The opening is deliberately left
+where it was — the increase rides the quadratic, not the linear term.
+
 It is a killscreen, not a wall. Against a scripted dodging pilot, crossing the
 first overload roughly halves how far a run gets per pool of hull segments —
 from about three waves to one or two — without ever making progress impossible.
@@ -250,7 +256,7 @@ offers are level-ups of what you already carry. Early picks are commitments.
 | **PULSE** | A shockwave that detonates outward on a timer |
 | **FLAK** | Lobbed shells that burst into shrapnel mid-flight |
 | **TETHER** | A cutting beam that latches onto the nearest target |
-| **WING** | Two wingmen fly your flanks and fire with you |
+| **WING** | A flight of wingmen holds your flanks and fires with you |
 | **VORTEX** | A singularity that drags everything nearby into it |
 | **SENTINEL** | Drops a turret that holds position and fires |
 | **CHRONO** | A time field around you drags enemy fire to a crawl |
@@ -290,6 +296,8 @@ levelling to 5 down the path you chose.
 | MIRROR | **TWIN** — two ghosts instead of one | **PHANTOM** — the ghost takes a hit meant for you |
 | QUAKE | **FAULT** — two fast walls per cast | **TREMOR** — one slow, thick, punishing wall |
 
+<p align="center"><img src="docs/preview/squadron.png" width="42%" alt="A full squadron flying the top weapon tier" /></p>
+
 **Mastery.** The last level of an evolution is not another multiplier — it is a
 **capstone** that changes what the system does, and the card says so before you
 take it. Finishing one is announced as `MASTERED`, and the badge on the HUD
@@ -327,7 +335,13 @@ RAPID (fire rate), POWER (damage), VELOCITY (projectile speed), AGILITY
 capacity), SALVAGE (score), REPAIR (hull), COOLANT (ability cooldowns), PIERCE
 (shots punch through one more enemy), CRIT (chance to hit twice) and RECLAIM
 (pickups top up overdrive), HARDPOINT (raises the main gun's ceiling), EVASION
-(a longer mercy window) and BOUNTY (more, richer gems). Four more reward a
+(a longer mercy window) and BOUNTY (more, richer gems).
+
+Several carry a second dimension rather than being one number: **POWER** adds +2
+damage to the main gun *and* to every ability that reads it, and thickens the
+round so it clips what a thin one would miss; **VELOCITY** makes a faster round
+land harder, not just arrive sooner; **CRIT** rounds punch through as well as
+hitting twice once the module is maxed. Four more reward a
 particular way of flying or fighting: **FOCUS** (damage that climbs the stiller
 you hold), **CASCADE** (each kill winds the trigger tighter, and it stacks),
 **BULWARK** (a shield soaks more than one hit before it breaks) and
@@ -478,8 +492,12 @@ the game. Music, effects and haptics each toggle from the PILOT tab.
 | **Mender** | No gun of its own. Beams the most damaged thing near it back to health — kill it first |
 | **Guardian** | Boss, every 5th wave. Three phases — aimed fans, then radial rings, then a relentless spiral with heavy shells |
 
-Weapons upgrade to level 5 via `W` pickups; `S` grants a shield that absorbs one
-hit, `+` is an extra life. Weapon drops thin out as the gun grows, so the last
+Weapons upgrade via `W` pickups — to level 5 on their own, and to 7 with
+HARDPOINT — and **every tier fires strictly more rounds, strictly faster, than
+the one below it**. That is asserted rather than assumed: the tier table used to
+stop at weapon 5, so the tiers HARDPOINT unlocked fired exactly like weapon 5,
+and weapon 4 fired the same three rounds as weapon 3 a few degrees apart. `S`
+grants a shield that absorbs one hit, `+` is an extra life. Weapon drops thin out as the gun grows, so the last
 levels are earned rather than handed over, and shields stop dropping once you are
 at capacity. A pity timer still guarantees a weapon eventually — sooner at low
 levels, much later at high ones — so a cold streak never strands you.
@@ -603,9 +621,13 @@ validated headlessly here:
   live enemy fire going from ~300 to ~510 units/second.
 - Deep-wave pacing measured against a *fixed* maxed loadout rather than a random
   draft, since a drafted run's wave times say as much about the draft as about
-  the balance. It reports seconds to clear and how full the screen was, at both
-  ordinary and boss waves — which is how the late-game dead air was found, and
-  how the fix was confirmed.
+  the balance. It reports seconds to clear, how full the screen was and how much
+  of the bullet pool was in use, at both ordinary and boss waves — which is how
+  the late-game dead air was found, how the fix was confirmed, and how a
+  saturated bullet pool was later caught suppressing the player's own output.
+- Every weapon tier asserted to fire strictly more rounds, strictly faster, than
+  the tier below it. This guard failed on its first run: weapon 4 fired the same
+  three rounds as weapon 3.
 - Every ability path forced and played: all 51 combinations (seventeen
   abilities, base plus both evolutions) run 150 simulated seconds each without a
   crash. The suite is also the balance yardstick, compared on the median score.

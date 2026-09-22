@@ -85,7 +85,7 @@ object Aug {
 
     val statMax = intArrayOf(
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        5, 4, 3, 3, 3, 3, 2, 3, 2, 3, 2, 3, 3, 2, 3, 3,
+        5, 5, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 2, 3, 3,
         3, 3, 3, 3, 3,
         3, 3, 2, 3
     )
@@ -139,7 +139,7 @@ object Aug {
         "A shockwave detonates outward on a timer.",
         "Lobbed shells burst into shrapnel mid-flight.",
         "A cutting beam latches onto the nearest target.",
-        "Two wingmen fly your flanks and fire with you.",
+        "A flight of wingmen holds your flanks and fires with you.",
         "A singularity drags everything nearby into it.",
         "Drops a turret that holds position and fires.",
         "A time field around you drags enemy fire to a crawl.",
@@ -239,29 +239,29 @@ object Aug {
 
     private val statBlurb = arrayOf(
         "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-        "+10% fire rate.",
-        "+1 damage on every shot.",
-        "+15% projectile speed.",
-        "+6% handling. The ship tracks your thumb harder.",
-        "+50% pickup magnet radius.",
-        "+45% overdrive charge from grazing.",
+        "+11.5% fire rate.",
+        "+2 damage on every shot and every ability. Thicker rounds, too.",
+        "+20% projectile speed, and a faster round lands harder.",
+        "+7.5% handling. The ship tracks your thumb harder.",
+        "+80% pickup magnet radius.",
+        "+60% overdrive charge from grazing.",
         "+1 shield capacity, and a shield right now.",
-        "+15% score from everything.",
+        "+20% score from everything.",
         "Repair one hull segment.",
-        "-10% cooldown on every ability system.",
+        "-12.5% cooldown on every ability system.",
         "Main gun shots punch through one more enemy.",
-        "+12% chance for a shot to hit twice.",
+        "+15% chance for a shot to hit twice. At full rank they pierce too.",
         "Pickups top up your overdrive meter.",
-        "Raises the main gun ceiling, and one level right now.",
-        "+0.35s of mercy after taking a hit.",
-        "+40% gem drops, and they are worth more.",
-        "+14% damage while you are moving at speed.",
-        "Taking a hit leaves you furious: +25% damage and fire rate for 5s.",
-        "+20% longer overdrive, and it charges 20% faster.",
+        "A higher main gun ceiling: wider mounts and a heavier centre line.",
+        "+0.45s of mercy after taking a hit.",
+        "+60% gem drops, and they are worth more.",
+        "+20% damage while you are moving at speed.",
+        "Taking a hit leaves you furious: +35% damage and fire rate for 5s.",
+        "+28% longer overdrive, and it charges 28% faster.",
         "Main gun hits set the target alight.",
-        "A spent shield grows back on its own.",
-        "+16% damage while you hold still. Reward for standing your ground.",
-        "Every kill speeds the next shot. It stacks, and it decays.",
+        "A spent shield grows back on its own, and fast.",
+        "+22% damage while you hold still. Reward for standing your ground.",
+        "Every kill speeds the next shot. It stacks five deep, and it decays.",
         "Each shield soaks two hits instead of one.",
         "A kill can take its neighbours with it."
     )
@@ -355,47 +355,60 @@ class Loadout {
 
     // ------------------------------------------------------------- derived
 
-    fun fireIntervalMul(): Float = clamp(1f - 0.10f * lvl[Aug.RAPID], 0.5f, 1f)
-    fun damageBonus(): Int = lvl[Aug.POWER]
-    fun bulletSpeedMul(): Float = 1f + 0.15f * lvl[Aug.VELOCITY]
-    fun handling(): Float = clamp(0.42f + 0.055f * lvl[Aug.AGILITY], 0.42f, 0.72f)
-    fun magnetRadius(): Float = 130f * (1f + 0.5f * lvl[Aug.MAGNET])
-    fun grazeCharge(): Float = 0.020f * (1f + 0.45f * lvl[Aug.GRAZE])
+    fun fireIntervalMul(): Float = clamp(1f - 0.115f * lvl[Aug.RAPID], 0.42f, 1f)
+
+    /**
+     * POWER is the damage stat, and every ability adds it on top of its own
+     * numbers, so it is deliberately the steepest module in the set.
+     */
+    fun damageBonus(): Int = 2 * lvl[Aug.POWER]
+    /** POWER also visibly thickens the round, which widens what it can clip. */
+    fun shotRadiusBonus(): Float = 0.24f * lvl[Aug.POWER]
+
+    fun bulletSpeedMul(): Float = 1f + 0.20f * lvl[Aug.VELOCITY]
+    /** A faster round lands harder: VELOCITY is not purely a travel-time stat. */
+    fun velocityDamageMul(): Float = 1f + 0.07f * lvl[Aug.VELOCITY]
+
+    fun handling(): Float = clamp(0.42f + 0.075f * lvl[Aug.AGILITY], 0.42f, 0.80f)
+    fun magnetRadius(): Float = 130f * (1f + 0.8f * lvl[Aug.MAGNET])
+    fun grazeCharge(): Float = 0.020f * (1f + 0.60f * lvl[Aug.GRAZE])
     fun maxShield(): Int = 1 + lvl[Aug.ARMOR]
-    fun scoreMul(): Float = 1f + 0.15f * lvl[Aug.SALVAGE]
-    fun cooldownMul(): Float = clamp(1f - 0.10f * lvl[Aug.COOLANT], 0.6f, 1f)
+    fun scoreMul(): Float = 1f + 0.20f * lvl[Aug.SALVAGE]
+    fun cooldownMul(): Float = clamp(1f - 0.125f * lvl[Aug.COOLANT], 0.5f, 1f)
     fun extraPierce(): Int = lvl[Aug.PIERCE]
-    fun critChance(): Float = 0.12f * lvl[Aug.CRIT]
-    fun reclaimCharge(): Float = 0.06f * lvl[Aug.RECLAIM]
+    fun critChance(): Float = 0.15f * lvl[Aug.CRIT]
+    /** A critical round punches through as well as hitting twice. */
+    fun critPierces(): Boolean = lvl[Aug.CRIT] >= 3
+    fun reclaimCharge(): Float = 0.09f * lvl[Aug.RECLAIM]
     fun maxWeapon(): Int = 5 + lvl[Aug.HARDPOINT]
-    fun mercyBonus(): Float = 0.35f * lvl[Aug.EVASION]
-    fun gemBonus(): Float = 0.40f * lvl[Aug.BOUNTY]
+    fun mercyBonus(): Float = 0.45f * lvl[Aug.EVASION]
+    fun gemBonus(): Float = 0.60f * lvl[Aug.BOUNTY]
 
     /** Damage multiplier when the ship is not moving; FOCUS is the still hand. */
-    fun focusBonus(): Float = 0.16f * lvl[Aug.FOCUS]
+    fun focusBonus(): Float = 0.22f * lvl[Aug.FOCUS]
     /** Fire-rate cut per stack of CASCADE, and how many stacks it can hold. */
-    fun cascadeStep(): Float = if (lvl[Aug.CASCADE] > 0) 0.035f else 0f
-    fun cascadeMax(): Int = lvl[Aug.CASCADE] * 4
+    fun cascadeStep(): Float = if (lvl[Aug.CASCADE] > 0) 0.045f else 0f
+    fun cascadeMax(): Int = lvl[Aug.CASCADE] * 5
     /** Hits one shield pip absorbs. */
     fun shieldDepth(): Int = 1 + lvl[Aug.BULWARK]
     /** Chance a kill detonates, and the blast it leaves. */
-    fun aftershockChance(): Float = 0.14f * lvl[Aug.AFTERSHOCK]
-    fun aftershockRadius(): Float = 54f + 16f * lvl[Aug.AFTERSHOCK]
+    fun aftershockChance(): Float = 0.20f * lvl[Aug.AFTERSHOCK]
+    fun aftershockRadius(): Float = 62f + 20f * lvl[Aug.AFTERSHOCK]
 
     /** Damage multiplier at full throttle; scales with how hard you are moving. */
-    fun momentumBonus(): Float = 0.14f * lvl[Aug.MOMENTUM]
+    fun momentumBonus(): Float = 0.20f * lvl[Aug.MOMENTUM]
     fun revengeSeconds(): Float = if (lvl[Aug.VENGEANCE] > 0) 5f else 0f
-    fun revengeMul(): Float = 1f + 0.25f * lvl[Aug.VENGEANCE]
-    fun overdriveSeconds(): Float = 1f + 0.20f * lvl[Aug.OVERCLOCK]
-    fun overdriveCharge(): Float = 1f + 0.20f * lvl[Aug.OVERCLOCK]
+    fun revengeMul(): Float = 1f + 0.35f * lvl[Aug.VENGEANCE]
+    fun overdriveSeconds(): Float = 1f + 0.28f * lvl[Aug.OVERCLOCK]
+    fun overdriveCharge(): Float = 1f + 0.28f * lvl[Aug.OVERCLOCK]
     /** Damage per second an ignited enemy takes; zero when the module is absent. */
-    fun burnDps(): Float = if (lvl[Aug.AFTERBURN] > 0) 3f + 2.5f * lvl[Aug.AFTERBURN] else 0f
+    fun burnDps(): Float = if (lvl[Aug.AFTERBURN] > 0) 5f + 4f * lvl[Aug.AFTERBURN] else 0f
     /** Seconds to regrow one spent shield pip, or zero when never. */
     fun shieldRegen(): Float = when (lvl[Aug.RECOVERY]) {
         0 -> 0f
-        1 -> 24f
-        2 -> 17f
-        else -> 12f
+        1 -> 18f
+        2 -> 12f
+        else -> 8f
     }
 
     // -------------------------------------------------------------- cards
